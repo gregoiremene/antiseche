@@ -1,0 +1,506 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "c5384814-c314-49b3-a779-eb3b363e9577",
+  "prevId": "b4b54308-d357-4a8b-ad10-735600d38e20",
+  "tables": {
+    "annees_scolaires": {
+      "name": "annees_scolaires",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "libelle": {
+          "name": "libelle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "annees_scolaires_libelle_unique": {
+          "name": "annees_scolaires_libelle_unique",
+          "columns": [
+            "libelle"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "classes": {
+      "name": "classes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "annee_id": {
+          "name": "annee_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nom": {
+          "name": "nom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "niveau": {
+          "name": "niveau",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "couleur": {
+          "name": "couleur",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'#208AEF'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(current_timestamp)"
+        }
+      },
+      "indexes": {
+        "classes_annee_id_nom_unique": {
+          "name": "classes_annee_id_nom_unique",
+          "columns": [
+            "annee_id",
+            "nom"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "classes_annee_id_annees_scolaires_id_fk": {
+          "name": "classes_annee_id_annees_scolaires_id_fk",
+          "tableFrom": "classes",
+          "tableTo": "annees_scolaires",
+          "columnsFrom": [
+            "annee_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "eleves": {
+      "name": "eleves",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "nom": {
+          "name": "nom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prenom": {
+          "name": "prenom",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "photo_uri": {
+          "name": "photo_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "amenagements": {
+          "name": "amenagements",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "infos": {
+          "name": "infos",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "evaluations": {
+      "name": "evaluations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "classe_id": {
+          "name": "classe_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "titre": {
+          "name": "titre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trimestre": {
+          "name": "trimestre",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "bareme": {
+          "name": "bareme",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 20
+        },
+        "coef": {
+          "name": "coef",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "idx_evaluations_classe": {
+          "name": "idx_evaluations_classe",
+          "columns": [
+            "classe_id",
+            "trimestre"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "evaluations_classe_id_classes_id_fk": {
+          "name": "evaluations_classe_id_classes_id_fk",
+          "tableFrom": "evaluations",
+          "tableTo": "classes",
+          "columnsFrom": [
+            "classe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "inscriptions": {
+      "name": "inscriptions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "eleve_id": {
+          "name": "eleve_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "classe_id": {
+          "name": "classe_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_inscriptions_classe": {
+          "name": "idx_inscriptions_classe",
+          "columns": [
+            "classe_id"
+          ],
+          "isUnique": false
+        },
+        "inscriptions_eleve_id_classe_id_unique": {
+          "name": "inscriptions_eleve_id_classe_id_unique",
+          "columns": [
+            "eleve_id",
+            "classe_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "inscriptions_eleve_id_eleves_id_fk": {
+          "name": "inscriptions_eleve_id_eleves_id_fk",
+          "tableFrom": "inscriptions",
+          "tableTo": "eleves",
+          "columnsFrom": [
+            "eleve_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "inscriptions_classe_id_classes_id_fk": {
+          "name": "inscriptions_classe_id_classes_id_fk",
+          "tableFrom": "inscriptions",
+          "tableTo": "classes",
+          "columnsFrom": [
+            "classe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notes": {
+      "name": "notes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "evaluation_id": {
+          "name": "evaluation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "inscription_id": {
+          "name": "inscription_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "valeur": {
+          "name": "valeur",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "absent": {
+          "name": "absent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "notes_evaluation_id_inscription_id_unique": {
+          "name": "notes_evaluation_id_inscription_id_unique",
+          "columns": [
+            "evaluation_id",
+            "inscription_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "notes_evaluation_id_evaluations_id_fk": {
+          "name": "notes_evaluation_id_evaluations_id_fk",
+          "tableFrom": "notes",
+          "tableTo": "evaluations",
+          "columnsFrom": [
+            "evaluation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "notes_inscription_id_inscriptions_id_fk": {
+          "name": "notes_inscription_id_inscriptions_id_fk",
+          "tableFrom": "notes",
+          "tableTo": "inscriptions",
+          "columnsFrom": [
+            "inscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "observations": {
+      "name": "observations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "inscription_id": {
+          "name": "inscription_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "commentaire": {
+          "name": "commentaire",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_observations_inscription": {
+          "name": "idx_observations_inscription",
+          "columns": [
+            "inscription_id",
+            "date"
+          ],
+          "isUnique": false
+        },
+        "observations_inscription_id_type_date_unique": {
+          "name": "observations_inscription_id_type_date_unique",
+          "columns": [
+            "inscription_id",
+            "type",
+            "date"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "observations_inscription_id_inscriptions_id_fk": {
+          "name": "observations_inscription_id_inscriptions_id_fk",
+          "tableFrom": "observations",
+          "tableTo": "inscriptions",
+          "columnsFrom": [
+            "inscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
