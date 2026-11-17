@@ -2,27 +2,22 @@ import { desc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FadeIn } from '@/components/fade-in';
 import { MenuActions } from '@/components/menu-actions';
+import { ModaleCentree } from '@/components/modale-centree';
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { aujourdhui } from '@/constants/observations';
-import { Colors, Spacing } from '@/constants/theme';
+import { CardShadow, Colors, Radius, Spacing } from '@/constants/theme';
 import { db } from '@/db';
 import { creerEvaluation, supprimerEvaluation } from '@/db/evaluations';
 import { classes, evaluations, inscriptions, notes } from '@/db/schema';
 import { formatJourCourt } from '@/lib/calendrier';
+import { useAnneeActive } from '@/hooks/use-annee-active';
 import { formatMoyenne, moyenne, moyenneClasse } from '@/lib/moyennes';
 import { TRIMESTRES, trimestreDeDate } from '@/lib/trimestre';
 
@@ -33,7 +28,14 @@ export default function EcranEvaluations() {
   const c = Colors[scheme];
   const insets = useSafeAreaInsets();
 
-  const [trimestre, setTrimestre] = useState(trimestreDeDate());
+  const { bornes } = useAnneeActive();
+  // trimestre courant par défaut, d'après les dates configurées
+  const [trimestre, setTrimestre] = useState(1);
+  const [trimestreInit, setTrimestreInit] = useState(false);
+  if (!trimestreInit && bornes) {
+    setTrimestre(trimestreDeDate(aujourdhui(), bornes));
+    setTrimestreInit(true);
+  }
   const [modalVisible, setModalVisible] = useState(false);
   const [titre, setTitre] = useState('');
   const [bareme, setBareme] = useState('20');
@@ -146,19 +148,10 @@ export default function EcranEvaluations() {
 
   return (
     <ThemedView style={styles.page}>
-      <Stack.Screen
-        options={{
-          title: classe ? `Notes — ${classe.nom}` : 'Notes',
-          headerRight: () => (
-            <MenuActions
-              actions={[{ label: 'Nouvelle évaluation', onPress: () => setModalVisible(true) }]}
-            />
-          ),
-        }}
-      />
+      <Stack.Screen options={{ title: classe ? `Notes — ${classe.nom}` : 'Notes' }} />
 
       <ScrollView
-        contentContainerStyle={[styles.liste, { paddingBottom: Spacing.six + insets.bottom }]}>
+        contentContainerStyle={[styles.liste, { paddingBottom: 110 + insets.bottom }]}>
         <View style={styles.onglets}>
           {TRIMESTRES.map((t) => (
             <Pressable
@@ -178,7 +171,7 @@ export default function EcranEvaluations() {
           ))}
         </View>
 
-        <View style={[styles.bandeau, { backgroundColor: c.backgroundElement }]}>
+        <View style={[styles.bandeau, { backgroundColor: c.backgroundElement, borderColor: c.border }, CardShadow]}>
           <ThemedText type="small" style={{ color: c.textSecondary }}>
             Moyenne de la classe — T{trimestre}
           </ThemedText>
@@ -193,19 +186,20 @@ export default function EcranEvaluations() {
             Aucune évaluation au trimestre {trimestre}.{'\n'}Menu ⋯ pour en créer une.
           </ThemedText>
         ) : (
-          evalsDuTrimestre.map((e) => {
+          evalsDuTrimestre.map((e, i) => {
             const saisies = (toutesNotes ?? []).filter((n) => n.evaluationId === e.id).length;
             const total = eleves?.length ?? 0;
             return (
-              <Pressable
-                key={e.id}
+              <FadeIn key={e.id} delay={Math.min(i * 35, 300)}>
+              <PressableScale
                 onPress={() =>
                   router.push({ pathname: '/evaluation/[id]', params: { id: String(e.id) } })
                 }
                 onLongPress={() => confirmerSuppression(e.id, e.titre)}
-                style={({ pressed }) => [
+                style={[
                   styles.carte,
-                  { backgroundColor: pressed ? c.backgroundSelected : c.backgroundElement },
+                  { backgroundColor: c.backgroundElement, borderColor: c.border },
+                  CardShadow,
                 ]}>
                 <View style={{ flex: 1, gap: Spacing.half }}>
                   <ThemedText style={styles.titreEval}>{e.titre}</ThemedText>
@@ -216,66 +210,66 @@ export default function EcranEvaluations() {
                 <ThemedText style={styles.moyenneEval}>
                   {formatMoyenne(moyenneParEval.get(e.id) ?? null)}
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
+              </FadeIn>
             );
           })
         )}
       </ScrollView>
 
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <Pressable style={styles.fond} onPress={() => setModalVisible(false)} />
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.feuille, { paddingBottom: Spacing.five + insets.bottom }]}>
-          <ThemedText type="subtitle">Nouvelle évaluation</ThemedText>
-          <ThemedText type="small" style={{ color: c.textSecondary }}>
-            Trimestre {trimestre} · {formatJourCourt(aujourdhui())}
-          </ThemedText>
+      <MenuActions
+        actions={[{ label: 'Nouvelle évaluation', onPress: () => setModalVisible(true) }]}
+      />
 
-          <TextInput
-            value={titre}
-            onChangeText={setTitre}
-            placeholder="Contrôle — Théorème de Pythagore"
-            placeholderTextColor={c.textSecondary}
-            autoFocus
-            style={[styles.champ, { color: c.text, borderColor: c.backgroundSelected }]}
-          />
+      <ModaleCentree visible={modalVisible} onClose={() => setModalVisible(false)}>
+        <ThemedText type="subtitle">Nouvelle évaluation</ThemedText>
+        <ThemedText type="small" style={{ color: c.textSecondary }}>
+          Trimestre {trimestre} · {formatJourCourt(aujourdhui())}
+        </ThemedText>
 
-          <View style={styles.ligneChamps}>
-            <View style={{ flex: 1, gap: Spacing.one }}>
-              <ThemedText type="small" style={{ color: c.textSecondary }}>
-                Barème
-              </ThemedText>
-              <TextInput
-                value={bareme}
-                onChangeText={setBareme}
-                keyboardType="numeric"
-                style={[styles.champ, { color: c.text, borderColor: c.backgroundSelected }]}
-              />
-            </View>
-            <View style={{ flex: 1, gap: Spacing.one }}>
-              <ThemedText type="small" style={{ color: c.textSecondary }}>
-                Coefficient
-              </ThemedText>
-              <TextInput
-                value={coef}
-                onChangeText={setCoef}
-                keyboardType="numeric"
-                style={[styles.champ, { color: c.text, borderColor: c.backgroundSelected }]}
-              />
-            </View>
-          </View>
+        <TextInput
+          value={titre}
+          onChangeText={setTitre}
+          placeholder="Contrôle — Théorème de Pythagore"
+          placeholderTextColor={c.textSecondary}
+          autoFocus
+          style={[styles.champ, { color: c.text, borderColor: c.border }]}
+        />
 
-          <Pressable
-            onPress={creer}
-            disabled={!titre.trim()}
-            style={[styles.bouton, { backgroundColor: c.text, opacity: titre.trim() ? 1 : 0.4 }]}>
-            <ThemedText style={[styles.titreEval, { color: c.background }]}>
-              Créer et saisir les notes
+        <View style={styles.ligneChamps}>
+          <View style={{ flex: 1, gap: Spacing.one }}>
+            <ThemedText type="small" style={{ color: c.textSecondary }}>
+              Barème
             </ThemedText>
-          </Pressable>
-        </ThemedView>
-      </Modal>
+            <TextInput
+              value={bareme}
+              onChangeText={setBareme}
+              keyboardType="numeric"
+              style={[styles.champ, { color: c.text, borderColor: c.border }]}
+            />
+          </View>
+          <View style={{ flex: 1, gap: Spacing.one }}>
+            <ThemedText type="small" style={{ color: c.textSecondary }}>
+              Coefficient
+            </ThemedText>
+            <TextInput
+              value={coef}
+              onChangeText={setCoef}
+              keyboardType="numeric"
+              style={[styles.champ, { color: c.text, borderColor: c.border }]}
+            />
+          </View>
+        </View>
+
+        <PressableScale
+          onPress={creer}
+          disabled={!titre.trim()}
+          style={[styles.bouton, { backgroundColor: c.accent, opacity: titre.trim() ? 1 : 0.4 }]}>
+          <ThemedText style={[styles.titreEval, { color: c.accentText }]}>
+            Créer et saisir les notes
+          </ThemedText>
+        </PressableScale>
+      </ModaleCentree>
     </ThemedView>
   );
 }
@@ -284,12 +278,13 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   liste: { padding: Spacing.three, gap: Spacing.two },
   onglets: { flexDirection: 'row', gap: Spacing.two },
-  onglet: { flex: 1, paddingVertical: Spacing.two, borderRadius: Spacing.two, alignItems: 'center' },
+  onglet: { flex: 1, paddingVertical: Spacing.two, borderRadius: Radius.s, alignItems: 'center' },
   bandeau: {
-    borderRadius: Spacing.three,
+    borderRadius: Radius.m,
     padding: Spacing.three,
     gap: Spacing.half,
     marginBottom: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   moyenneGenerale: { fontSize: 32, fontWeight: '700' },
   vide: { textAlign: 'center', marginTop: Spacing.six },
@@ -298,18 +293,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.m,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   titreEval: { fontSize: 16, fontWeight: '600' },
   moyenneEval: { fontSize: 20, fontWeight: '700' },
-  fond: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  feuille: {
-    padding: Spacing.four,
-    gap: Spacing.three,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-  },
   ligneChamps: { flexDirection: 'row', gap: Spacing.three },
-  champ: { borderWidth: 1, borderRadius: Spacing.two, padding: Spacing.three, fontSize: 16 },
-  bouton: { padding: Spacing.three, borderRadius: Spacing.two, alignItems: 'center' },
+  champ: { borderWidth: 1, borderRadius: Radius.s, padding: Spacing.three, fontSize: 16 },
+  bouton: { padding: Spacing.three, borderRadius: Radius.s, alignItems: 'center' },
 });

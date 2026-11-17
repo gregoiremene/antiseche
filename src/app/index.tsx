@@ -1,41 +1,25 @@
 import { count, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { router, Stack } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
 
+import { FadeIn } from '@/components/fade-in';
 import { MenuActions } from '@/components/menu-actions';
+import { ModaleCentree } from '@/components/modale-centree';
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { db } from '@/db';
 import { getOuCreerAnneeActive } from '@/db/annees';
 import { classes, inscriptions } from '@/db/schema';
 
-const COULEURS = [
-  '#208AEF',
-  '#E5484D',
-  '#30A46C',
-  '#F76B15',
-  '#8E4EC6',
-  '#0D9BA5',
-] as const;
+const COULEURS = ['#208AEF', '#E5484D', '#30A46C', '#F76B15', '#8E4EC6', '#0D9BA5'] as const;
 
 export default function EcranClasses() {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const c = Colors[scheme];
-  // barre de navigation Android / barre de gestes
-  const insets = useSafeAreaInsets();
 
   const [annee, setAnnee] = useState<{ id: number; libelle: string } | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -46,8 +30,6 @@ export default function EcranClasses() {
     getOuCreerAnneeActive().then(setAnnee);
   }, []);
 
-  // -1 tant que l'année n'est pas chargée : la requête ne renvoie rien,
-  // ce qui évite un hook conditionnel.
   const { data: mesClasses } = useLiveQuery(
     db
       .select({
@@ -83,134 +65,114 @@ export default function EcranClasses() {
       'Les élèves restent enregistrés, mais leurs notes et observations de cette classe seront supprimées.',
       [
         { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: () => db.delete(classes).where(eq(classes.id, id)),
-        },
+        { text: 'Supprimer', style: 'destructive', onPress: () => db.delete(classes).where(eq(classes.id, id)) },
       ],
     );
   }
 
+  const vide = mesClasses?.length === 0;
+
   return (
     <ThemedView style={styles.page}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <MenuActions
-              actions={[{ label: 'Nouvelle classe', onPress: () => setModalVisible(true) }]}
-            />
-          ),
-        }}
-      />
-
-      <ScrollView
-        contentContainerStyle={[styles.liste, { paddingBottom: 120 + insets.bottom }]}>
-        <ThemedText type="small" style={{ color: c.textSecondary }}>
+      {/* contenu aligné en bas : la grille part du bas de l'écran */}
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <ThemedText type="small" style={{ color: c.textSecondary, marginBottom: Spacing.two }}>
           Année {annee?.libelle ?? '…'}
         </ThemedText>
 
-        {mesClasses?.length === 0 && (
+        {vide && (
           <ThemedText style={[styles.vide, { color: c.textSecondary }]}>
-            Aucune classe pour l’instant.{'\n'}Menu ⋯ en haut à droite pour en créer une.
+            Aucune classe pour l’instant.{'\n'}Bouton ⋯ en bas à droite pour en créer une.
           </ThemedText>
         )}
 
-        {mesClasses?.map((classe) => (
-          <Pressable
-            key={classe.id}
-            onPress={() =>
-              router.push({ pathname: '/classe/[id]', params: { id: String(classe.id) } })
-            }
-            onLongPress={() => supprimerClasse(classe.id, classe.nom)}
-            style={({ pressed }) => [
-              styles.carte,
-              { backgroundColor: pressed ? c.backgroundSelected : c.backgroundElement },
-            ]}>
-            <View style={[styles.pastille, { backgroundColor: classe.couleur }]} />
-            <View style={styles.carteTexte}>
-              <ThemedText style={styles.nomClasse}>{classe.nom}</ThemedText>
-              <ThemedText type="small" style={{ color: c.textSecondary }}>
-                {classe.nbEleves} {classe.nbEleves > 1 ? 'élèves' : 'élève'}
-              </ThemedText>
-            </View>
-          </Pressable>
-        ))}
+        <View style={styles.grille}>
+          {mesClasses?.map((classe, i) => (
+            <FadeIn key={classe.id} delay={i * 45} style={styles.caseGrille}>
+              <PressableScale
+                onPress={() => router.push({ pathname: '/classe/[id]', params: { id: String(classe.id) } })}
+                onLongPress={() => supprimerClasse(classe.id, classe.nom)}
+                style={[styles.carte, { backgroundColor: classe.couleur }]}>
+                <ThemedText style={styles.nomClasse} numberOfLines={2}>
+                  {classe.nom}
+                </ThemedText>
+                <ThemedText style={styles.nbEleves}>
+                  {classe.nbEleves} {classe.nbEleves > 1 ? 'élèves' : 'élève'}
+                </ThemedText>
+              </PressableScale>
+            </FadeIn>
+          ))}
+        </View>
       </ScrollView>
 
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <Pressable style={styles.fond} onPress={() => setModalVisible(false)} />
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.feuille, { paddingBottom: Spacing.six + insets.bottom }]}>
-          <ThemedText type="subtitle">Nouvelle classe</ThemedText>
+      <MenuActions
+        actions={[
+          { label: 'Nouvelle classe', onPress: () => setModalVisible(true) },
+          { label: 'Colles', onPress: () => router.push('/colles') },
+          { label: 'Matières', onPress: () => router.push('/matieres') },
+          { label: 'Dates des trimestres', onPress: () => router.push('/trimestres') },
+          { label: 'Sauvegarde / Restauration', onPress: () => router.push('/sauvegarde') },
+        ]}
+      />
 
-          <TextInput
-            value={nom}
-            onChangeText={setNom}
-            placeholder="4eB, 2nde 3, TG1…"
-            placeholderTextColor={c.textSecondary}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={ajouterClasse}
-            style={[styles.champ, { color: c.text, borderColor: c.backgroundSelected }]}
-          />
+      <ModaleCentree visible={modalVisible} onClose={() => setModalVisible(false)}>
+        <ThemedText type="subtitle">Nouvelle classe</ThemedText>
 
-          <View style={styles.couleurs}>
-            {COULEURS.map((col) => (
-              <Pressable
-                key={col}
-                onPress={() => setCouleur(col)}
-                style={[
-                  styles.choixCouleur,
-                  { backgroundColor: col },
-                  couleur === col && { borderColor: c.text, borderWidth: 3 },
-                ]}
-              />
-            ))}
-          </View>
+        <TextInput
+          value={nom}
+          onChangeText={setNom}
+          placeholder="4eB, 2nde 3, TG1…"
+          placeholderTextColor={c.textSecondary}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={ajouterClasse}
+          style={[styles.champ, { color: c.text, borderColor: c.border }]}
+        />
 
-          <Pressable
-            onPress={ajouterClasse}
-            disabled={!nom.trim()}
-            style={[styles.bouton, { backgroundColor: c.text, opacity: nom.trim() ? 1 : 0.4 }]}>
-            <ThemedText style={[styles.nomClasse, { color: c.background }]}>Créer</ThemedText>
-          </Pressable>
-        </ThemedView>
-      </Modal>
+        <View style={styles.couleurs}>
+          {COULEURS.map((col) => (
+            <Pressable
+              key={col}
+              onPress={() => setCouleur(col)}
+              style={[
+                styles.choixCouleur,
+                { backgroundColor: col },
+                couleur === col && { borderColor: c.text, borderWidth: 3 },
+              ]}
+            />
+          ))}
+        </View>
+
+        <PressableScale
+          onPress={ajouterClasse}
+          disabled={!nom.trim()}
+          style={[styles.bouton, { backgroundColor: c.accent, opacity: nom.trim() ? 1 : 0.4 }]}>
+          <ThemedText style={[styles.boutonTexte, { color: c.accentText }]}>Créer</ThemedText>
+        </PressableScale>
+      </ModaleCentree>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  liste: { padding: Spacing.three, gap: Spacing.two },
-  vide: { textAlign: 'center', marginTop: Spacing.six },
+  // flexGrow + justifyContent flex-end : peu de classes = collées en bas
+  scroll: { flexGrow: 1, justifyContent: 'flex-end', padding: Spacing.three, paddingBottom: 120 },
+  vide: { textAlign: 'center', marginBottom: Spacing.four },
+  grille: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
+  caseGrille: { width: '47.5%', flexGrow: 1 },
   carte: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
+    aspectRatio: 1,
+    borderRadius: Radius.l,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    justifyContent: 'flex-end',
+    gap: Spacing.half,
   },
-  pastille: { width: 12, height: 40, borderRadius: 6 },
-  carteTexte: { gap: Spacing.half },
-  nomClasse: { fontSize: 17, fontWeight: '600' },
-  fond: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  feuille: {
-    padding: Spacing.four,
-    paddingBottom: Spacing.six,
-    gap: Spacing.four,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-  },
-  champ: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    fontSize: 18,
-  },
-  couleurs: { flexDirection: 'row', gap: Spacing.three, justifyContent: 'center' },
+  nomClasse: { color: '#fff', fontSize: 24, fontWeight: '800' },
+  nbEleves: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '600' },
+  champ: { borderWidth: 1, borderRadius: Radius.s, padding: Spacing.three, fontSize: 18 },
+  couleurs: { flexDirection: 'row', gap: Spacing.three, justifyContent: 'center', flexWrap: 'wrap' },
   choixCouleur: { width: 36, height: 36, borderRadius: 18 },
-  bouton: { padding: Spacing.three, borderRadius: Spacing.two, alignItems: 'center' },
+  bouton: { padding: Spacing.three, borderRadius: Radius.s, alignItems: 'center' },
+  boutonTexte: { fontSize: 16, fontWeight: '600' },
 });

@@ -2,31 +2,30 @@ import { and, between, desc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AvatarEleve } from '@/components/avatar-eleve';
 import { BadgesAmenagements } from '@/components/badges-amenagements';
+import { BlocCollesEleve } from '@/components/bloc-colles-eleve';
 import { BlocNotesEleve } from '@/components/bloc-notes-eleve';
 import { EditeurDossier } from '@/components/editeur-dossier';
+import { ModaleCentree } from '@/components/modale-centree';
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { aujourdhui, infosObservation, OBSERVATIONS } from '@/constants/observations';
-import { Colors, Spacing } from '@/constants/theme';
+import { CardShadow, Colors, Radius, Spacing } from '@/constants/theme';
+import { useAnneeActive } from '@/hooks/use-annee-active';
+import { bornesTrimestre, formatDateCourte, trimestreDeDate } from '@/lib/trimestre';
 import { db } from '@/db';
+import { creerColle, selectObservationsCollables, supprimerColle } from '@/db/colles';
 import {
   annoterObservation,
   basculerObservation,
   supprimerObservation,
 } from '@/db/observations';
+import { genererMotif } from '@/lib/colle-texte';
 import { classes, eleves, inscriptions, observations, type TypeObservation } from '@/db/schema';
 import {
   bornesMois,
@@ -57,11 +56,15 @@ export default function FicheEleve() {
   // aujourd'hui est sélectionné d'emblée : c'est le jour sur lequel on écrit
   // dans la quasi-totalité des cas
   const [jourSelectionne, setJourSelectionne] = useState<string | null>(aujourdhui());
+  // filtre par type, activé en tapant un compteur : met la liste et le
+  // calendrier en focus sur ce seul type sur tout le trimestre
+  const [typeFiltre, setTypeFiltre] = useState<TypeObservation | null>(null);
   const [aAnnoter, setAAnnoter] = useState<ObsAffichee | null>(null);
   const [texteNote, setTexteNote] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [dossierOuvert, setDossierOuvert] = useState(false);
 
+  const { annee, bornes } = useAnneeActive();
   const { debut, fin } = bornesMois(mois);
   const jourJ = aujourdhui();
   /**
@@ -78,7 +81,9 @@ export default function FicheEleve() {
         nom: eleves.nom,
         prenom: eleves.prenom,
         amenagements: eleves.amenagements,
+        photoUri: eleves.photoUri,
         infos: eleves.infos,
+        mailsParents: eleves.mailsParents,
         inscriptionId: inscriptions.id,
         classeNom: classes.nom,
         couleur: classes.couleur,
@@ -139,11 +144,59 @@ export default function FicheEleve() {
     return map;
   }, [duMois]);
 
+  // Le bilan chiffré porte sur le TRIMESTRE, pas sur le mois affiché : c'est la
+  // vision globale demandée (« Kevin, 6 exos non faits ce trimestre »). Le
+  // trimestre est celui du mois qu'on regarde, pour rester cohérent avec la
+  // navigation.
+  const trimestreAffiche =
+    bornes && `${mois.annee}-${String(mois.mois).padStart(2, '0')}-15`
+      ? trimestreDeDate(`${mois.annee}-${String(mois.mois).padStart(2, '0')}-15`, bornes)
+      : null;
+
+  const rangeTrimestre =
+    bornes && annee && trimestreAffiche
+      ? bornesTrimestre(trimestreAffiche, annee.libelle, bornes)
+      : null;
+
+  // sert à la fois aux compteurs ET à la liste chronologique « tout le
+  // trimestre », d'où les champs complets et le tri.
+  const { data: duTrimestre } = useLiveQuery(
+    db
+      .select({
+        id: observations.id,
+        type: observations.type,
+        date: observations.date,
+        commentaire: observations.commentaire,
+      })
+      .from(observations)
+      .innerJoin(inscriptions, eq(inscriptions.id, observations.inscriptionId))
+      .where(
+        and(
+          eq(inscriptions.eleveId, eleveId),
+          between(observations.date, rangeTrimestre?.debut ?? '', rangeTrimestre?.fin ?? ''),
+        ),
+      )
+      .orderBy(desc(observations.date)),
+    [eleveId, rangeTrimestre?.debut, rangeTrimestre?.fin],
+  );
+
   const compteurs = useMemo(() => {
     const map = new Map<TypeObservation, number>();
-    for (const o of duMois ?? []) map.set(o.type, (map.get(o.type) ?? 0) + 1);
+    for (const o of duTrimestre ?? []) map.set(o.type, (map.get(o.type) ?? 0) + 1);
     return map;
-  }, [duMois]);
+  }, [duTrimestre]);
+
+  // filtre et jour sélectionné sont exclusifs : chacun répond à une question
+  // différente (quel type ? / quel jour ?), les cumuler embrouillerait la liste
+  function basculerFiltre(t: TypeObservation) {
+    setJourSelectionne(null);
+    setTypeFiltre((prec) => (prec === t ? null : t));
+  }
+
+  function selectionnerJour(date: string | null) {
+    setTypeFiltre(null);
+    setJourSelectionne(date);
+  }
 
   function changerMois(suivant: boolean) {
     setMois(suivant ? moisSuivant(mois) : moisPrecedent(mois));
@@ -162,6 +215,29 @@ export default function FicheEleve() {
     setTexteNote('');
   }
 
+  /**
+   * Colle instantanée : motif pré-rempli avec les exos non faits / oublis du
+   * trimestre, sans date (elle se met plus tard depuis l'écran Colles). Le but
+   * est de capturer en un geste en classe, pas de tout saisir sur le moment.
+   */
+  async function collerRapide() {
+    if (!fiche || !annee || !bornes) return;
+    const t = trimestreDeDate(jourJ, bornes);
+    const { debut, fin } = bornesTrimestre(t, annee.libelle, bornes);
+    const obs = await selectObservationsCollables(fiche.inscriptionId, debut, fin);
+    const motif = genererMotif(obs.map((o) => ({ type: o.type, date: o.date })));
+    const id = await creerColle(fiche.inscriptionId, null, motif);
+    Alert.alert(
+      'Colle créée',
+      (motif ? `Motif : ${motif}\n\n` : 'Sans motif pour l’instant.\n\n') +
+        'À compléter (date, etc.) dans l’écran Colles.',
+      [
+        { text: 'Annuler', style: 'destructive', onPress: () => supprimerColle(id) },
+        { text: 'OK' },
+      ],
+    );
+  }
+
   function confirmerSuppression(o: ObsAffichee) {
     Alert.alert(
       'Supprimer cette observation ?',
@@ -174,7 +250,11 @@ export default function FicheEleve() {
   }
 
   const semaines = grilleMois(mois);
-  const listeAffichee: ObsAffichee[] = jourSelectionne ? (duJour ?? []) : (duMois ?? []);
+  // liste détaillée : le jour choisi ; sinon le trimestre, éventuellement
+  // restreint au type filtré
+  const listeAffichee: ObsAffichee[] = jourSelectionne
+    ? (duJour ?? [])
+    : (duTrimestre ?? []).filter((o) => !typeFiltre || o.type === typeFiltre);
   const libelleJourActif = !jourActif
     ? 'Choisis un jour dans le calendrier pour noter'
     : jourActif === jourJ
@@ -192,15 +272,20 @@ export default function FicheEleve() {
       <ScrollView
         contentContainerStyle={[styles.contenu, { paddingBottom: Spacing.six + insets.bottom }]}>
         {fiche && (
-          <Pressable
+          <PressableScale
             onPress={() => setDossierOuvert(true)}
-            style={[styles.bloc, { backgroundColor: c.backgroundElement }]}>
+            style={[
+              styles.bloc,
+              { backgroundColor: c.backgroundElement, borderColor: c.border, borderWidth: StyleSheet.hairlineWidth },
+              CardShadow,
+            ]}>
             <View style={styles.enTete}>
-              <View style={[styles.initiales, { backgroundColor: fiche.couleur }]}>
-                <ThemedText style={styles.initialesTexte}>
-                  {(fiche.prenom[0] ?? '') + (fiche.nom[0] ?? '')}
-                </ThemedText>
-              </View>
+              <AvatarEleve
+                photoUri={fiche.photoUri}
+                initiales={(fiche.prenom[0] ?? '') + (fiche.nom[0] ?? '')}
+                taille={52}
+                couleur={fiche.couleur}
+              />
               <View style={{ flex: 1, gap: Spacing.half }}>
                 <ThemedText style={styles.nom}>
                   {fiche.nom.toLocaleUpperCase('fr-FR')} {fiche.prenom}
@@ -222,7 +307,7 @@ export default function FicheEleve() {
                   : 'Tape pour modifier le dossier'}
               </ThemedText>
             )}
-          </Pressable>
+          </PressableScale>
         )}
 
         {/* Saisie : agit sur le jour sélectionné, ou sur aujourd'hui par défaut */}
@@ -233,7 +318,7 @@ export default function FicheEleve() {
           {OBSERVATIONS.map((o) => {
             const actif = typesDuJour.has(o.type);
             return (
-              <Pressable
+              <PressableScale
                 key={o.type}
                 disabled={!jourActif || enCours}
                 onPress={async () => {
@@ -251,7 +336,7 @@ export default function FicheEleve() {
                   styles.boutonSaisie,
                   actif
                     ? { backgroundColor: o.couleur }
-                    : { backgroundColor: c.backgroundElement, opacity: 0.75 },
+                    : { backgroundColor: c.backgroundElement, opacity: 0.75, borderColor: c.border, borderWidth: StyleSheet.hairlineWidth },
                 ]}>
                 <ThemedText style={styles.emoji}>{o.emoji}</ThemedText>
                 <ThemedText
@@ -259,7 +344,7 @@ export default function FicheEleve() {
                   numberOfLines={2}>
                   {o.label}
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
             );
           })}
         </View>
@@ -293,15 +378,20 @@ export default function FicheEleve() {
                 const types = parJour.get(date);
                 const estAujourdhui = date === jourJ;
                 const estSelectionne = date === jourSelectionne;
+                // filtre actif : le jour est mis en avant s'il porte ce type,
+                // et les pastilles laissent place à un surlignage franc
+                const surligne = !!typeFiltre && !!types?.includes(typeFiltre);
+                const attenue = !!typeFiltre && !surligne;
                 return (
                   <Pressable
                     key={j}
-                    onPress={() => setJourSelectionne(estSelectionne ? null : date)}
+                    onPress={() => selectionnerJour(estSelectionne ? null : date)}
                     style={styles.jour}>
                     <View
                       style={[
                         styles.numeroCercle,
                         estAujourdhui && { backgroundColor: c.backgroundSelected },
+                        surligne && { backgroundColor: infosObservation(typeFiltre).couleur },
                         estSelectionne && { backgroundColor: c.text },
                       ]}>
                       <ThemedText
@@ -309,23 +399,31 @@ export default function FicheEleve() {
                         style={{
                           color: estSelectionne
                             ? c.background
-                            : types
-                              ? c.text
-                              : c.textSecondary,
+                            : surligne
+                              ? '#fff'
+                              : attenue
+                                ? c.textSecondary
+                                : types
+                                  ? c.text
+                                  : c.textSecondary,
+                          opacity: attenue ? 0.4 : 1,
                         }}>
                         {Number(date.split('-')[2])}
                       </ThemedText>
                     </View>
+                    {/* pastilles masquées pendant le filtrage : le surlignage
+                        du jour porte déjà l'information */}
                     <View style={styles.pastilles}>
-                      {types?.slice(0, 3).map((t) => (
-                        <View
-                          key={t}
-                          style={[
-                            styles.pastille,
-                            { backgroundColor: infosObservation(t).couleur },
-                          ]}
-                        />
-                      ))}
+                      {!typeFiltre &&
+                        types?.slice(0, 3).map((t) => (
+                          <View
+                            key={t}
+                            style={[
+                              styles.pastille,
+                              { backgroundColor: infosObservation(t).couleur },
+                            ]}
+                          />
+                        ))}
                     </View>
                   </Pressable>
                 );
@@ -334,35 +432,58 @@ export default function FicheEleve() {
           ))}
         </View>
 
-        {/* Bilan du mois affiché : indépendant du jour sélectionné, sinon deux
-            zones de l'écran décrivent des périodes différentes sans le dire. */}
-        {(duMois?.length ?? 0) > 0 && (
+        {/* Bilan du TRIMESTRE, indépendant du mois affiché et du jour
+            sélectionné : c'est la vision globale sur la période. */}
+        {(duTrimestre?.length ?? 0) > 0 && trimestreAffiche && rangeTrimestre && (
           <>
             <ThemedText type="small" style={{ color: c.textSecondary }}>
-              Total sur {formatMois(mois)}
+              Total T{trimestreAffiche} · {formatDateCourte(rangeTrimestre.debut)} –{' '}
+              {formatDateCourte(rangeTrimestre.fin)}
             </ThemedText>
             <View style={styles.compteurs}>
-              {OBSERVATIONS.filter((o) => (compteurs.get(o.type) ?? 0) > 0).map((o) => (
-                <View key={o.type} style={[styles.compteur, { borderColor: o.couleur }]}>
-                  <ThemedText style={[styles.compteurNombre, { color: o.couleur }]}>
-                    {compteurs.get(o.type)}
-                  </ThemedText>
-                  <ThemedText type="small">{o.label}</ThemedText>
-                </View>
-              ))}
+              {OBSERVATIONS.filter((o) => (compteurs.get(o.type) ?? 0) > 0).map((o) => {
+                const actif = typeFiltre === o.type;
+                return (
+                  <Pressable
+                    key={o.type}
+                    onPress={() => basculerFiltre(o.type)}
+                    style={[
+                      styles.compteur,
+                      { borderColor: o.couleur, backgroundColor: actif ? o.couleur : 'transparent' },
+                    ]}>
+                    <ThemedText
+                      style={[styles.compteurNombre, { color: actif ? '#fff' : o.couleur }]}>
+                      {compteurs.get(o.type)}
+                    </ThemedText>
+                    <ThemedText type="small" style={actif ? { color: '#fff' } : undefined}>
+                      {o.label}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
             </View>
           </>
         )}
 
-        {/* En-tête de la liste : mois entier, ou jour sélectionné */}
+        {/* En-tête de la liste : jour choisi, type filtré, ou trimestre entier */}
         <View style={styles.enTeteListe}>
           <ThemedText style={styles.titreListe}>
-            {jourSelectionne ? formatJourCourt(jourSelectionne) : formatMois(mois)}
+            {jourSelectionne
+              ? formatJourCourt(jourSelectionne)
+              : typeFiltre
+                ? infosObservation(typeFiltre).label
+                : trimestreAffiche
+                  ? `Trimestre ${trimestreAffiche}`
+                  : formatMois(mois)}
           </ThemedText>
-          {jourSelectionne && (
-            <Pressable onPress={() => setJourSelectionne(null)}>
+          {(jourSelectionne || typeFiltre) && (
+            <Pressable
+              onPress={() => {
+                setJourSelectionne(null);
+                setTypeFiltre(null);
+              }}>
               <ThemedText type="small" style={{ color: c.textSecondary }}>
-                Voir tout le mois
+                Voir tout le trimestre
               </ThemedText>
             </Pressable>
           )}
@@ -370,7 +491,13 @@ export default function FicheEleve() {
 
         {listeAffichee.length === 0 ? (
           <ThemedText style={[styles.vide, { color: c.textSecondary }]}>
-            {jourSelectionne ? 'Rien de noté ce jour-là.' : `Rien de noté en ${formatMois(mois)}.`}
+            {jourSelectionne
+              ? 'Rien de noté ce jour-là.'
+              : typeFiltre
+                ? `Aucun « ${infosObservation(typeFiltre).label} » ce trimestre.`
+                : trimestreAffiche
+                  ? `Rien de noté au trimestre ${trimestreAffiche}.`
+                  : `Rien de noté en ${formatMois(mois)}.`}
           </ThemedText>
         ) : (
           listeAffichee.map((o) => {
@@ -400,6 +527,17 @@ export default function FicheEleve() {
           })
         )}
 
+        {fiche && (
+          <>
+            <PressableScale
+              onPress={collerRapide}
+              style={[styles.boutonColler, { borderColor: c.border, backgroundColor: c.backgroundElement }]}>
+              <ThemedText style={{ fontWeight: '700' }}>🔒 Coller {fiche.prenom}</ThemedText>
+            </PressableScale>
+          </>
+        )}
+
+        {fiche && <BlocCollesEleve inscriptionId={fiche.inscriptionId} />}
         <BlocNotesEleve eleveId={eleveId} />
       </ScrollView>
 
@@ -408,49 +546,46 @@ export default function FicheEleve() {
           visible={dossierOuvert}
           eleveId={eleveId}
           nomComplet={`${fiche.prenom} ${fiche.nom.toLocaleUpperCase('fr-FR')}`}
+          photoUri={fiche.photoUri}
           amenagements={fiche.amenagements}
           infos={fiche.infos}
+          mailsParents={fiche.mailsParents}
           onFermer={() => setDossierOuvert(false)}
         />
       )}
 
       {/* Annotation d'une observation : "54 p.23", "a oublié sa règle"… */}
-      <Modal visible={aAnnoter !== null} animationType="slide" transparent>
-        <Pressable style={styles.fond} onPress={() => setAAnnoter(null)} />
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.feuille, { paddingBottom: Spacing.five + insets.bottom }]}>
-          {aAnnoter && (
-            <>
-              <ThemedText type="subtitle">
-                {infosObservation(aAnnoter.type).emoji} {infosObservation(aAnnoter.type).label}
-              </ThemedText>
-              <ThemedText type="small" style={{ color: c.textSecondary }}>
-                {formatJourCourt(aAnnoter.date)}
-              </ThemedText>
+      <ModaleCentree visible={aAnnoter !== null} onClose={() => setAAnnoter(null)}>
+        {aAnnoter && (
+          <>
+            <ThemedText type="subtitle">
+              {infosObservation(aAnnoter.type).emoji} {infosObservation(aAnnoter.type).label}
+            </ThemedText>
+            <ThemedText type="small" style={{ color: c.textSecondary }}>
+              {formatJourCourt(aAnnoter.date)}
+            </ThemedText>
 
-              <TextInput
-                value={texteNote}
-                onChangeText={setTexteNote}
-                placeholder="54 p.23"
-                placeholderTextColor={c.textSecondary}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={enregistrerAnnotation}
-                style={[styles.champ, { color: c.text, borderColor: c.backgroundSelected }]}
-              />
+            <TextInput
+              value={texteNote}
+              onChangeText={setTexteNote}
+              placeholder="54 p.23"
+              placeholderTextColor={c.textSecondary}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={enregistrerAnnotation}
+              style={[styles.champ, { color: c.text, borderColor: c.border }]}
+            />
 
-              <Pressable
-                onPress={enregistrerAnnotation}
-                style={[styles.bouton, { backgroundColor: c.text }]}>
-                <ThemedText style={[styles.ligneTitre, { color: c.background }]}>
-                  Enregistrer
-                </ThemedText>
-              </Pressable>
-            </>
-          )}
-        </ThemedView>
-      </Modal>
+            <PressableScale
+              onPress={enregistrerAnnotation}
+              style={[styles.bouton, { backgroundColor: c.accent }]}>
+              <ThemedText style={[styles.ligneTitre, { color: c.accentText }]}>
+                Enregistrer
+              </ThemedText>
+            </PressableScale>
+          </>
+        )}
+      </ModaleCentree>
     </ThemedView>
   );
 }
@@ -458,7 +593,14 @@ export default function FicheEleve() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   contenu: { padding: Spacing.three, gap: Spacing.three },
-  bloc: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.three },
+  bloc: {
+    borderRadius: Radius.m,
+    padding: Spacing.three,
+    gap: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
+    ...CardShadow,
+  },
   enTete: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   initiales: {
     width: 52,
@@ -470,11 +612,17 @@ const styles = StyleSheet.create({
   initialesTexte: { color: '#fff', fontWeight: '700', fontSize: 18 },
   nom: { fontSize: 17, fontWeight: '600' },
 
+  boutonColler: {
+    padding: Spacing.three,
+    borderRadius: Radius.m,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+  },
   saisie: { flexDirection: 'row', gap: Spacing.two },
   saisieInactive: { opacity: 0.4 },
   boutonSaisie: {
     flex: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.s,
     paddingVertical: Spacing.two,
     alignItems: 'center',
     gap: Spacing.half,
@@ -532,18 +680,11 @@ const styles = StyleSheet.create({
   barre: { width: 4, height: 36, borderRadius: 2 },
   ligneTitre: { fontSize: 15, fontWeight: '600' },
 
-  fond: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  feuille: {
-    padding: Spacing.four,
-    gap: Spacing.three,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-  },
   champ: {
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.s,
     padding: Spacing.three,
     fontSize: 18,
   },
-  bouton: { padding: Spacing.three, borderRadius: Spacing.two, alignItems: 'center' },
+  bouton: { padding: Spacing.three, borderRadius: Radius.s, alignItems: 'center' },
 });

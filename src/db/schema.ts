@@ -12,6 +12,13 @@ export const anneesScolaires = sqliteTable('annees_scolaires', {
   /** "2026-2027" */
   libelle: text('libelle').notNull().unique(),
   active: integer('active', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Dernier jour du trimestre, `YYYY-MM-DD`. Nullable : quand la date n'est pas
+   * encore renseignée, l'appli retombe sur une valeur par défaut calculée à
+   * partir du libellé (les dates réelles varient d'un établissement à l'autre).
+   */
+  finT1: text('fin_t1'),
+  finT2: text('fin_t2'),
 });
 
 export const classes = sqliteTable(
@@ -49,6 +56,11 @@ export const eleves = sqliteTable('eleves', {
     .default([]),
   /** notes de dossier, texte libre */
   infos: text('infos'),
+  /**
+   * Mail(s) des parents, séparés par des virgules. Sert à pré-remplir le
+   * destinataire d'un mailto pour les billets de colle.
+   */
+  mailsParents: text('mails_parents'),
 });
 
 /** L'élève DANS une classe, pour une année donnée. */
@@ -62,6 +74,11 @@ export const inscriptions = sqliteTable(
     classeId: integer('classe_id')
       .notNull()
       .references(() => classes.id, { onDelete: 'cascade' }),
+    /**
+     * Rang d'affichage dans la classe. Les élèves suivent l'ordre de saisie,
+     * pas l'alphabet, et cet ordre est modifiable à la main.
+     */
+    ordre: integer('ordre').notNull().default(0),
   },
   (t) => [unique().on(t.eleveId, t.classeId), index('idx_inscriptions_classe').on(t.classeId)],
 );
@@ -131,3 +148,119 @@ export const notes = sqliteTable(
   },
   (t) => [unique().on(t.evaluationId, t.inscriptionId)],
 );
+
+/**
+ * Statut d'une colle (retenue). L'app ne planifie pas (c'est Pronote), elle
+ * suit le cycle de vie et rappelle les étapes.
+ *   a_faire  : décidée, en attente de vérification à la date prévue
+ *   faite    : l'élève l'a effectuée
+ *   non_faite: l'élève ne s'est pas présenté → à reprogrammer
+ */
+export const STATUTS_COLLE = ['a_faire', 'faite', 'non_faite'] as const;
+export type StatutColle = (typeof STATUTS_COLLE)[number];
+
+/**
+ * Où se déroule la colle, déterminé par la recherche de créneau :
+ *   vie_scolaire : l'élève et le prof sont libres → permanence surveillée
+ *   ma_salle     : le prof fait cours à une autre classe → l'élève vient dans sa salle
+ */
+export const SURVEILLANCES = ['vie_scolaire', 'ma_salle'] as const;
+export type Surveillance = (typeof SURVEILLANCES)[number];
+
+export const colles = sqliteTable(
+  'colles',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    inscriptionId: integer('inscription_id')
+      .notNull()
+      .references(() => inscriptions.id, { onDelete: 'cascade' }),
+    /**
+     * Date prévue de la retenue. Nullable : en classe on crée la colle vite,
+     * sans connaître le créneau libre de l'élève ; la date se met plus tard.
+     */
+    date: text('date'),
+    /** motif, pré-rempli depuis les observations mais éditable */
+    motif: text('motif').notNull().default(''),
+    statut: text('statut').$type<StatutColle>().notNull().default('a_faire'),
+    /** étapes de la chaîne, cochées au fur et à mesure */
+    poseePronote: integer('posee_pronote', { mode: 'boolean' }).notNull().default(false),
+    parentsPrevenus: integer('parents_prevenus', { mode: 'boolean' }).notNull().default(false),
+    elevePrevenu: integer('eleve_prevenu', { mode: 'boolean' }).notNull().default(false),
+    /** créneau retenu (« HH:MM »), rempli via « Trouver un créneau » ; nullable */
+    heureDebut: text('heure_debut'),
+    heureFin: text('heure_fin'),
+    surveillance: text('surveillance').$type<Surveillance>(),
+    /** pour 'ma_salle' : la classe avec qui le prof est à ce moment */
+    surveillanceClasse: text('surveillance_classe'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (t) => [index('idx_colles_inscription').on(t.inscriptionId), index('idx_colles_date').on(t.date)],
+);
+
+/**
+ * Semaine à laquelle s'applique un cours récurrent :
+ *   toutes : chaque semaine (cas le plus courant)
+ *   A / B  : uniquement la semaine A ou B (le prof a une alternance A/B)
+ */
+export const SEMAINES_EDT = ['toutes', 'A', 'B'] as const;
+export type SemaineEdt = (typeof SEMAINES_EDT)[number];
+
+/**
+ * Matières du prof, avec une couleur pour repérer les cours d'un coup d'œil
+ * dans la grille d'emploi du temps (comme un vrai EDT de carnet). Partagées
+ * entre les classes et les années : ce sont des étiquettes génériques.
+ */
+export const matieres = sqliteTable('matieres', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nom: text('nom').notNull().unique(),
+  couleur: text('couleur').notNull().default('#208AEF'),
+});
+
+/**
+ * Emploi du temps : les cours récurrents d'une classe, semaine type. On saisit
+ * l'EDT COMPLET de chaque classe (toutes matières, pas seulement les miennes)
+ * pour savoir quand un élève est réellement libre. `estMonCours` marque les
+ * heures que le prof assure lui-même : elles définissent sa disponibilité pour
+ * recevoir un collé, les autres ne servent qu'à savoir que la classe est prise.
+ *
+ * Horaires en texte "HH:MM" 24 h zéro-paddé : comparables comme des chaînes,
+ * comme les dates ISO ailleurs dans le schéma.
+ */
+export const emploisDuTemps = sqliteTable(
+  'emplois_du_temps',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    classeId: integer('classe_id')
+      .notNull()
+      .references(() => classes.id, { onDelete: 'cascade' }),
+    /** jour de la semaine, 1 = lundi … 6 = samedi (pas de dimanche) */
+    jour: integer('jour').notNull(),
+    heureDebut: text('heure_debut').notNull(),
+    heureFin: text('heure_fin').notNull(),
+    semaine: text('semaine').$type<SemaineEdt>().notNull().default('toutes'),
+    estMonCours: integer('est_mon_cours', { mode: 'boolean' }).notNull().default(false),
+    /** matière gérée (couleur + nom) choisie dans une liste ; null = non renseignée */
+    matiereId: integer('matiere_id').references(() => matieres.id, { onDelete: 'set null' }),
+    /** ancien libellé texte libre, conservé pour compat ; l'UI passe par matiereId */
+    matiere: text('matiere'),
+    salle: text('salle'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (t) => [index('idx_edt_classe').on(t.classeId, t.jour)],
+);
+
+/**
+ * Réglages de l'emploi du temps, ligne unique (id = 1). Ancre l'alternance des
+ * semaines A/B : on connaît un lundi et son type, la parité du nombre de
+ * semaines écoulées donne le type de n'importe quelle date. `ancreLundi` est
+ * toujours un lundi (`YYYY-MM-DD`).
+ */
+export const parametresEdt = sqliteTable('parametres_edt', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ancreLundi: text('ancre_lundi').notNull(),
+  ancreType: text('ancre_type').$type<'A' | 'B'>().notNull().default('A'),
+});

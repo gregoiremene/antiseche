@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -16,8 +16,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Spacing } from '@/constants/theme';
 import { db } from '@/db';
+import { selectElevesOrdonnes } from '@/db/eleves';
 import { saisirNote } from '@/db/evaluations';
-import { eleves, evaluations, inscriptions, notes } from '@/db/schema';
+import { evaluations, notes } from '@/db/schema';
 import { formatMoyenne, moyenne, moyenneClasse } from '@/lib/moyennes';
 
 export default function SaisieNotes() {
@@ -41,16 +42,7 @@ export default function SaisieNotes() {
   const evaluation = infos?.[0];
 
   const { data: liste } = useLiveQuery(
-    db
-      .select({
-        inscriptionId: inscriptions.id,
-        nom: eleves.nom,
-        prenom: eleves.prenom,
-      })
-      .from(inscriptions)
-      .innerJoin(eleves, eq(eleves.id, inscriptions.eleveId))
-      .where(eq(inscriptions.classeId, evaluation?.classeId ?? -1))
-      .orderBy(asc(eleves.nom), asc(eleves.prenom)),
+    selectElevesOrdonnes(evaluation?.classeId ?? -1),
     [evaluation?.classeId],
   );
 

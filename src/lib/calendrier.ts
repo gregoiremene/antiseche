@@ -70,3 +70,51 @@ export function formatJourCourt(date: string): string {
   const [, mois, jour] = date.split('-');
   return `${Number(jour)} ${NOMS_MOIS[Number(mois) - 1]}`;
 }
+
+const NOMS_JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+/** "mercredi 29 juillet" — quand le jour de la semaine compte (créneaux). */
+export function formatJourAvecSemaine(date: string): string {
+  const [a, m, j] = date.split('-').map(Number);
+  const idx = (new Date(Date.UTC(a, m - 1, j)).getUTCDay() + 6) % 7; // 0 = lundi
+  return `${NOMS_JOURS[idx]} ${formatJourCourt(date)}`;
+}
+
+/** aujourd'hui en `YYYY-MM-DD`, heure locale. */
+export function aujourdhuiISO(ref = new Date()): string {
+  return cleDate(ref.getFullYear(), ref.getMonth() + 1, ref.getDate());
+}
+
+/**
+ * Décale une date `YYYY-MM-DD` de `n` jours (n peut être négatif). Calcul en
+ * UTC pour ne pas glisser d'un jour selon le fuseau.
+ */
+export function ajouterJours(dateISO: string, n: number): string {
+  const [a, m, j] = dateISO.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, j + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * Résout un jour/mois (sans année) en la date `YYYY-MM-DD` la plus proche
+ * d'aujourd'hui. Une colle se saisit à quelques jours/semaines : « 3/1 » saisi
+ * fin décembre doit tomber en janvier prochain, pas en janvier dernier.
+ * Renvoie null si le jour/mois ne forme pas une date valide.
+ */
+export function dateDepuisJourMois(jour: number, mois: number, ref = new Date()): string | null {
+  if (!Number.isInteger(jour) || !Number.isInteger(mois) || mois < 1 || mois > 12 || jour < 1 || jour > 31) {
+    return null;
+  }
+  const refUTC = Date.UTC(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  let meilleure: string | null = null;
+  let meilleurEcart = Infinity;
+  for (const annee of [ref.getFullYear() - 1, ref.getFullYear(), ref.getFullYear() + 1]) {
+    const d = new Date(Date.UTC(annee, mois - 1, jour));
+    if (d.getUTCMonth() + 1 !== mois || d.getUTCDate() !== jour) continue; // 31/02…
+    const ecart = Math.abs(d.getTime() - refUTC);
+    if (ecart < meilleurEcart) {
+      meilleurEcart = ecart;
+      meilleure = d.toISOString().slice(0, 10);
+    }
+  }
+  return meilleure;
+}

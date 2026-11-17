@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
-import { Colors, Spacing } from '@/constants/theme';
+import { CardShadow, Colors, Radius, Spacing } from '@/constants/theme';
 
 export type ActionMenu = {
   label: string;
@@ -12,69 +13,84 @@ export type ActionMenu = {
 };
 
 /**
- * Menu « ⋯ » à placer dans l'en-tête de navigation.
+ * Bouton flottant « ⋯ » en bas à droite, dont le menu s'ouvre vers le haut.
  *
- * Sert à ranger les actions rares (créer une classe, importer une liste) qui
- * ne se font qu'en début d'année : elles n'ont pas à occuper un bouton flottant
- * en permanence, contrairement à la saisie quotidienne.
+ * Rangé en bas car atteignable au pouce, contrairement à l'en-tête. Les actions
+ * qu'il contient sont rares (créer une classe, réordonner…), le bouton reste
+ * donc discret.
+ *
+ * `bottomOffset` remonte le bouton au-dessus d'une éventuelle barre d'action
+ * (ex. « Saisie rapide » sur l'écran classe).
  */
-export function MenuActions({ actions }: { actions: ActionMenu[] }) {
+export function MenuActions({
+  actions,
+  bottomOffset = 0,
+}: {
+  actions: ActionMenu[];
+  bottomOffset?: number;
+}) {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const c = Colors[scheme];
   const insets = useSafeAreaInsets();
   const [ouvert, setOuvert] = useState(false);
 
+  const bas = insets.bottom + Spacing.four + bottomOffset;
+
   return (
     <>
-      <Pressable onPress={() => setOuvert(true)} hitSlop={12} style={styles.declencheur}>
-        <ThemedText style={styles.points}>⋯</ThemedText>
-      </Pressable>
+      <PressableScale
+        onPress={() => setOuvert(true)}
+        style={[styles.fab, CardShadow, { backgroundColor: c.accent, bottom: bas }]}>
+        <ThemedText style={[styles.points, { color: c.accentText }]}>⋯</ThemedText>
+      </PressableScale>
 
-      <Modal visible={ouvert} transparent animationType="fade">
-        <Pressable style={styles.fond} onPress={() => setOuvert(false)} />
-        <View
-          style={[
-            styles.carte,
-            { backgroundColor: c.backgroundElement, top: insets.top + 52 },
-          ]}>
-          {actions.map((a, i) => (
-            <Pressable
-              key={a.label}
-              onPress={() => {
-                setOuvert(false);
-                a.onPress();
-              }}
-              style={({ pressed }) => [
-                styles.item,
-                i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.backgroundSelected },
-                pressed && { backgroundColor: c.backgroundSelected },
-              ]}>
-              <ThemedText style={a.destructive ? { color: '#E5484D' } : undefined}>
-                {a.label}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
+      <Modal visible={ouvert} transparent animationType="fade" onRequestClose={() => setOuvert(false)}>
+        <Pressable style={styles.fond} onPress={() => setOuvert(false)}>
+          <View style={[styles.menu, { backgroundColor: c.backgroundElement, borderColor: c.border, bottom: bas + 68 }, CardShadow]}>
+            {actions.map((a, i) => (
+              <Pressable
+                key={a.label}
+                onPress={() => {
+                  setOuvert(false);
+                  a.onPress();
+                }}
+                style={({ pressed }) => [
+                  styles.item,
+                  i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
+                  pressed && { backgroundColor: c.backgroundSelected },
+                ]}>
+                <ThemedText style={a.destructive ? { color: '#E5484D' } : undefined}>
+                  {a.label}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
       </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  declencheur: { paddingHorizontal: Spacing.two },
-  points: { fontSize: 24, lineHeight: 28 },
-  fond: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
-  carte: {
+  fab: {
     position: 'absolute',
-    right: Spacing.three,
-    minWidth: 210,
-    borderRadius: Spacing.two,
+    right: Spacing.four,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  points: { fontSize: 26, fontWeight: '700', lineHeight: 30 },
+  fond: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
+  menu: {
+    position: 'absolute',
+    right: Spacing.four,
+    minWidth: 220,
+    borderRadius: Radius.m,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
   },
   item: { paddingVertical: Spacing.three, paddingHorizontal: Spacing.three },
 });

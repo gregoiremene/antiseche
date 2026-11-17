@@ -43,3 +43,14 @@ export async function getOuCreerAnneeActive() {
     .returning();
   return creee;
 }
+
+export async function definirBornesTrimestres(
+  anneeId: number,
+  finT1: string,
+  finT2: string,
+) {
+  await db
+    .update(anneesScolaires)
+    .set({ finT1, finT2 })
+    .where(eq(anneesScolaires.id, anneeId));
+}

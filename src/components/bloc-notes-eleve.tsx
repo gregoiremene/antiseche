@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Colors, Spacing } from '@/constants/theme';
+import { CardShadow, Colors, Radius, Spacing } from '@/constants/theme';
 import { db } from '@/db';
 import { evaluations, inscriptions, notes } from '@/db/schema';
 import { formatJourCourt } from '@/lib/calendrier';
@@ -104,7 +104,14 @@ export function BlocNotesEleve({ eleveId }: { eleveId: number }) {
 }
 
 const styles = StyleSheet.create({
-  bloc: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.three },
+  bloc: {
+    borderRadius: Radius.m,
+    padding: Spacing.three,
+    gap: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
+    ...CardShadow,
+  },
   enTete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   generale: { fontSize: 30, fontWeight: '700' },
   trimestres: { flexDirection: 'row', gap: Spacing.three },

@@ -1,17 +1,19 @@
-import { asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { OBSERVATIONS } from '@/constants/observations';
-import { Colors, Spacing } from '@/constants/theme';
+import { CardShadow, Colors, Radius, Spacing } from '@/constants/theme';
 import { db } from '@/db';
+import { selectElevesOrdonnes } from '@/db/eleves';
 import { enregistrerObservations } from '@/db/observations';
-import { classes, eleves, inscriptions, type TypeObservation } from '@/db/schema';
+import { classes, type TypeObservation } from '@/db/schema';
 
 export default function EcranSaisieRapide() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,19 +34,7 @@ export default function EcranSaisieRapide() {
   );
   const classe = infosClasse?.[0];
 
-  const { data: liste } = useLiveQuery(
-    db
-      .select({
-        inscriptionId: inscriptions.id,
-        nom: eleves.nom,
-        prenom: eleves.prenom,
-      })
-      .from(inscriptions)
-      .innerJoin(eleves, eq(eleves.id, inscriptions.eleveId))
-      .where(eq(inscriptions.classeId, classeId))
-      .orderBy(asc(eleves.nom), asc(eleves.prenom)),
-    [classeId],
-  );
+  const { data: liste } = useLiveQuery(selectElevesOrdonnes(classeId), [classeId]);
 
   const obs = OBSERVATIONS.find((o) => o.type === type) ?? OBSERVATIONS[0];
 
@@ -68,31 +58,11 @@ export default function EcranSaisieRapide() {
     <ThemedView style={styles.page}>
       <Stack.Screen options={{ title: classe?.nom ? `Saisie · ${classe.nom}` : 'Saisie' }} />
 
-      {/* Choix du type : une seule rangée, atteignable sans réfléchir */}
+      {/* La liste occupe tout l'écran et défile derrière la barre du bas :
+          on garde les yeux sur les élèves, les contrôles restent sous le pouce.
+          padding bas = sélecteur (~44) + bouton (56) + marges + inset. */}
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.types}>
-        {OBSERVATIONS.map((o) => {
-          const actif = o.type === type;
-          return (
-            <Pressable
-              key={o.type}
-              onPress={() => setType(o.type)}
-              style={[
-                styles.puce,
-                { backgroundColor: actif ? o.couleur : c.backgroundElement },
-              ]}>
-              <ThemedText style={[styles.puceTexte, { color: actif ? '#fff' : c.text }]}>
-                {o.emoji} {o.label}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      <ScrollView
-        contentContainerStyle={[styles.liste, { paddingBottom: 100 + insets.bottom }]}>
+        contentContainerStyle={[styles.liste, { paddingBottom: 190 + insets.bottom }]}>
         {liste?.map((e) => {
           const choisi = selection.has(e.inscriptionId);
           return (
@@ -123,37 +93,67 @@ export default function EcranSaisieRapide() {
         })}
       </ScrollView>
 
-      <Pressable
-        onPress={valider}
-        disabled={selection.size === 0}
-        style={[
-          styles.valider,
-          {
-            backgroundColor: obs.couleur,
-            opacity: selection.size === 0 ? 0.4 : 1,
-            bottom: Spacing.four + insets.bottom,
-          },
-        ]}>
-        <ThemedText style={styles.validerTexte}>
-          {selection.size === 0
-            ? `Sélectionne les élèves concernés`
-            : `Valider · ${selection.size} élève${selection.size > 1 ? 's' : ''}`}
-        </ThemedText>
-      </Pressable>
+      {/* Barre du bas : sélecteur de type compact + validation */}
+      <View style={[styles.barreBas, { paddingBottom: Spacing.two + insets.bottom }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.types}>
+          {OBSERVATIONS.map((o) => {
+            const actif = o.type === type;
+            return (
+              <Pressable
+                key={o.type}
+                onPress={() => setType(o.type)}
+                style={[styles.puce, { backgroundColor: actif ? o.couleur : c.backgroundElement }]}>
+                <ThemedText style={[styles.puceTexte, { color: actif ? '#fff' : c.text }]}>
+                  {o.emoji} {o.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <PressableScale
+          onPress={valider}
+          disabled={selection.size === 0}
+          style={[
+            styles.valider,
+            CardShadow,
+            { backgroundColor: obs.couleur, opacity: selection.size === 0 ? 0.4 : 1 },
+          ]}>
+          <ThemedText style={styles.validerTexte}>
+            {selection.size === 0
+              ? `Sélectionne les élèves concernés`
+              : `Valider · ${selection.size} élève${selection.size > 1 ? 's' : ''}`}
+          </ThemedText>
+        </PressableScale>
+      </View>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  types: { padding: Spacing.three, gap: Spacing.two },
+  barreBas: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: Spacing.two,
+    gap: Spacing.two,
+    // léger voile pour détacher la barre de la liste qui défile dessous
+    backgroundColor: 'rgba(127,127,127,0.06)',
+  },
+  types: { paddingHorizontal: Spacing.three, gap: Spacing.two },
   puce: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: 999,
   },
-  puceTexte: { fontSize: 14, fontWeight: '600' },
-  liste: { paddingHorizontal: Spacing.three, gap: Spacing.one, paddingBottom: 100 },
+  puceTexte: { fontSize: 13, fontWeight: '600' },
+  liste: { paddingHorizontal: Spacing.three, gap: Spacing.one, paddingTop: Spacing.two },
   // lignes hautes et pleine largeur : on tape en marchant dans les rangs
   ligne: {
     flexDirection: 'row',
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     height: 54,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.s,
   },
   case: {
     width: 24,
@@ -175,14 +175,11 @@ const styles = StyleSheet.create({
   coche: { color: '#fff', fontSize: 15, fontWeight: '700', lineHeight: 18 },
   nom: { fontSize: 16, fontWeight: '600', flex: 1 },
   valider: {
-    position: 'absolute',
-    left: Spacing.three,
-    right: Spacing.three,
-    bottom: Spacing.four,
-    height: 56,
-    borderRadius: Spacing.three,
+    marginHorizontal: Spacing.three,
+    height: 52,
+    borderRadius: Radius.m,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  validerTexte: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  validerTexte: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 });

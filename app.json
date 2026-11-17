@@ -7,17 +7,14 @@
     "icon": "./assets/images/icon.png",
     "scheme": "antiseche",
     "userInterfaceStyle": "automatic",
-    "ios": {
-      "icon": "./assets/expo.icon"
-    },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#7B1E1E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.antiseche.app"
     },
     "web": {
@@ -29,16 +26,31 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#7B1E1E",
+          "image": "./assets/images/android-icon-foreground.png",
+          "imageWidth": 140
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Antisèche accède à tes photos pour illustrer la fiche d’un élève.",
+          "cameraPermission": "Antisèche accède à l’appareil photo pour prendre la photo d’un élève."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b3b74d0f-b3f6-4040-993d-494c38a39610"
+      }
+    },
+    "owner": "lisalwaspp"
   }
 }
