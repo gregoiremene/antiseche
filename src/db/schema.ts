@@ -33,6 +33,13 @@ export const classes = sqliteTable(
     niveau: text('niveau'),
     /** couleur hex, pour repérer la classe d'un coup d'œil */
     couleur: text('couleur').notNull().default('#208AEF'),
+    /**
+     * Libellés des deux demi-groupes de la classe. Nommables (ex. « Espagnol »/
+     * « Allemand »), mais toujours exactement deux : un élève est dans le groupe
+     * 1 ou 2 (cf. `inscriptions.groupe`). Valeurs par défaut neutres.
+     */
+    groupe1Nom: text('groupe1_nom').notNull().default('Groupe 1'),
+    groupe2Nom: text('groupe2_nom').notNull().default('Groupe 2'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(current_timestamp)`),
@@ -79,6 +86,12 @@ export const inscriptions = sqliteTable(
      * pas l'alphabet, et cet ordre est modifiable à la main.
      */
     ordre: integer('ordre').notNull().default(0),
+    /**
+     * Demi-groupe de l'élève DANS cette classe : 1 ou 2 (cf. `classes.groupe1Nom`
+     * / `groupe2Nom` pour les libellés). Tout le monde est assigné ; par défaut
+     * groupe 1, le prof répartit ensuite. Les groupes sont propres à la classe.
+     */
+    groupe: integer('groupe').notNull().default(1),
   },
   (t) => [unique().on(t.eleveId, t.classeId), index('idx_inscriptions_classe').on(t.classeId)],
 );
@@ -208,6 +221,16 @@ export const SEMAINES_EDT = ['toutes', 'A', 'B'] as const;
 export type SemaineEdt = (typeof SEMAINES_EDT)[number];
 
 /**
+ * Demi-groupe concerné par un cours, INDÉPENDANT de la semaine A/B :
+ *   classe : toute la classe (cas par défaut)
+ *   g1 / g2 : seulement le groupe 1 ou 2 (cf. `inscriptions.groupe`)
+ * Le cas « A je prends g1, B je prends g2 au même créneau » se modélise par
+ * deux cours : (semaine A, g1) et (semaine B, g2).
+ */
+export const GROUPES_EDT = ['classe', 'g1', 'g2'] as const;
+export type GroupeEdt = (typeof GROUPES_EDT)[number];
+
+/**
  * Matières du prof, avec une couleur pour repérer les cours d'un coup d'œil
  * dans la grille d'emploi du temps (comme un vrai EDT de carnet). Partagées
  * entre les classes et les années : ce sont des étiquettes génériques.
@@ -240,6 +263,8 @@ export const emploisDuTemps = sqliteTable(
     heureDebut: text('heure_debut').notNull(),
     heureFin: text('heure_fin').notNull(),
     semaine: text('semaine').$type<SemaineEdt>().notNull().default('toutes'),
+    /** demi-groupe concerné, orthogonal à la semaine (cf. GROUPES_EDT) */
+    groupe: text('groupe').$type<GroupeEdt>().notNull().default('classe'),
     estMonCours: integer('est_mon_cours', { mode: 'boolean' }).notNull().default(false),
     /** matière gérée (couleur + nom) choisie dans une liste ; null = non renseignée */
     matiereId: integer('matiere_id').references(() => matieres.id, { onDelete: 'set null' }),

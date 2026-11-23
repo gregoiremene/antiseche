@@ -8,9 +8,12 @@
  * ce que fait le prof à ce moment :
  *   - prof libre            → 🏫 surveillance vie scolaire (permanence)
  *   - prof en cours avec Y≠X → 👥 l'élève est reçu dans la salle du prof
+ *
+ * Demi-groupes : seuls les cours de X qui concernent l'élève (toute la classe,
+ * ou SON groupe) l'occupent. Un cours réservé à l'autre groupe le laisse libre.
  */
 
-import type { SemaineEdt, Surveillance } from '@/db/schema';
+import type { GroupeEdt, SemaineEdt, Surveillance } from '@/db/schema';
 import { ajouterJours } from './calendrier';
 import {
   coursActifCetteSemaine,
@@ -27,6 +30,7 @@ export type CoursPourCreneau = {
   heureDebut: string; // "HH:MM"
   heureFin: string;
   semaine: SemaineEdt;
+  groupe: GroupeEdt;
   estMonCours: boolean;
 };
 
@@ -82,6 +86,8 @@ function soustraire(base: Intervalle, occupe: Intervalle[]): Intervalle[] {
 export function trouverCreneaux(params: {
   /** classe de l'élève à coller */
   classeXId: number;
+  /** demi-groupe de l'élève dans sa classe (1 ou 2) */
+  groupeEleve: 1 | 2;
   /** EDT complet de l'année (toutes les classes) */
   cours: CoursPourCreneau[];
   ancre: AncreSemaine;
@@ -91,7 +97,11 @@ export function trouverCreneaux(params: {
   /** durée minimale d'un créneau retenu, en minutes (défaut 30) */
   dureeMinMin?: number;
 }): Creneau[] {
-  const { classeXId, cours, ancre, aujourdISO, horizonJours = 14, dureeMinMin = 30 } = params;
+  const { classeXId, groupeEleve, cours, ancre, aujourdISO, horizonJours = 14, dureeMinMin = 30 } = params;
+  const groupeDeLEleve: GroupeEdt = groupeEleve === 1 ? 'g1' : 'g2';
+  /** un cours de la classe X occupe-t-il CET élève (toute la classe, ou son groupe) ? */
+  const occupeLEleve = (co: CoursPourCreneau) =>
+    co.groupe === 'classe' || co.groupe === groupeDeLEleve;
   const creneaux: Creneau[] = [];
 
   for (let d = 1; d <= horizonJours; d++) {
@@ -109,9 +119,10 @@ export function trouverCreneaux(params: {
       fin: Math.max(FIN_JOURNEE, ...actifs.map((co) => heureEnMinutes(co.heureFin))),
     };
 
-    // heures où la classe X a cours → l'élève n'est pas libre
+    // heures où la classe X a cours POUR CET ÉLÈVE → il n'est pas libre
+    // (un cours réservé à l'autre demi-groupe ne le bloque pas)
     const xOccupee = actifs
-      .filter((co) => co.classeId === classeXId)
+      .filter((co) => co.classeId === classeXId && occupeLEleve(co))
       .map((co) => ({ debut: heureEnMinutes(co.heureDebut), fin: heureEnMinutes(co.heureFin) }));
 
     const fenetresLibres = soustraire(enveloppe, xOccupee);

@@ -27,6 +27,9 @@ export default function EcranSaisieRapide() {
   const [type, setType] = useState<TypeObservation>('exo_non_fait');
   const [selection, setSelection] = useState<Set<number>>(new Set());
   const [enCours, setEnCours] = useState(false);
+  // filtre de demi-groupe : « Tous » par défaut, ou un seul groupe quand on fait
+  // cours en effectif réduit
+  const [filtreGroupe, setFiltreGroupe] = useState<'tous' | 1 | 2>('tous');
 
   const { data: infosClasse } = useLiveQuery(
     db.select().from(classes).where(eq(classes.id, classeId)),
@@ -35,6 +38,23 @@ export default function EcranSaisieRapide() {
   const classe = infosClasse?.[0];
 
   const { data: liste } = useLiveQuery(selectElevesOrdonnes(classeId), [classeId]);
+
+  // élèves affichés selon le filtre de groupe
+  const listeVisible = (liste ?? []).filter(
+    (e) => filtreGroupe === 'tous' || e.groupe === filtreGroupe,
+  );
+
+  // en changeant de groupe, on retire de la sélection les élèves désormais
+  // masqués : on ne valide jamais un élève qu'on ne voit plus.
+  function changerFiltre(valeur: 'tous' | 1 | 2) {
+    setFiltreGroupe(valeur);
+    const visibles = new Set(
+      (liste ?? [])
+        .filter((e) => valeur === 'tous' || e.groupe === valeur)
+        .map((e) => e.inscriptionId),
+    );
+    setSelection((prec) => new Set([...prec].filter((id) => visibles.has(id))));
+  }
 
   const obs = OBSERVATIONS.find((o) => o.type === type) ?? OBSERVATIONS[0];
 
@@ -58,12 +78,36 @@ export default function EcranSaisieRapide() {
     <ThemedView style={styles.page}>
       <Stack.Screen options={{ title: classe?.nom ? `Saisie · ${classe.nom}` : 'Saisie' }} />
 
+      {/* Filtre de demi-groupe : n'affiche que les élèves présents ce jour-là */}
+      <View style={styles.filtres}>
+        {([
+          { v: 'tous' as const, label: 'Tous' },
+          { v: 1 as const, label: classe?.groupe1Nom ?? 'Groupe 1' },
+          { v: 2 as const, label: classe?.groupe2Nom ?? 'Groupe 2' },
+        ]).map((opt) => {
+          const actif = filtreGroupe === opt.v;
+          return (
+            <Pressable
+              key={String(opt.v)}
+              onPress={() => changerFiltre(opt.v)}
+              style={[
+                styles.filtrePuce,
+                { borderColor: actif ? c.accent : c.border, backgroundColor: actif ? c.accent : 'transparent' },
+              ]}>
+              <ThemedText style={[styles.filtreTexte, { color: actif ? c.accentText : c.text }]} numberOfLines={1}>
+                {opt.label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+
       {/* La liste occupe tout l'écran et défile derrière la barre du bas :
           on garde les yeux sur les élèves, les contrôles restent sous le pouce.
           padding bas = sélecteur (~44) + bouton (56) + marges + inset. */}
       <ScrollView
         contentContainerStyle={[styles.liste, { paddingBottom: 190 + insets.bottom }]}>
-        {liste?.map((e) => {
+        {listeVisible.map((e) => {
           const choisi = selection.has(e.inscriptionId);
           return (
             <Pressable
@@ -136,6 +180,20 @@ export default function EcranSaisieRapide() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
+  filtres: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+  },
+  filtrePuce: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+  },
+  filtreTexte: { fontSize: 13, fontWeight: '700' },
   barreBas: {
     position: 'absolute',
     left: 0,

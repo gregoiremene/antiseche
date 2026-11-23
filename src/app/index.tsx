@@ -1,10 +1,11 @@
 import { count, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
 
 import { FadeIn } from '@/components/fade-in';
+import { GrilleEdt, JOURS, type BlocEdt } from '@/components/grille-edt';
 import { MenuActions } from '@/components/menu-actions';
 import { ModaleCentree } from '@/components/modale-centree';
 import { PressableScale } from '@/components/pressable-scale';
@@ -13,6 +14,8 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { db } from '@/db';
 import { getOuCreerAnneeActive } from '@/db/annees';
+import { selectMonEdt } from '@/db/edt';
+import { libelleGroupeCompact } from '@/db/groupes';
 import { classes, inscriptions } from '@/db/schema';
 
 const COULEURS = ['#208AEF', '#E5484D', '#30A46C', '#F76B15', '#8E4EC6', '#0D9BA5'] as const;
@@ -44,6 +47,26 @@ export default function EcranClasses() {
       .groupBy(classes.id)
       .orderBy(classes.nom),
     [annee?.id],
+  );
+
+  // mon emploi du temps : seulement MES heures, toutes classes de l'année
+  const { data: mesHeures } = useLiveQuery(selectMonEdt(annee?.id ?? -1), [annee?.id]);
+
+  const blocsEdt: BlocEdt[] = useMemo(
+    () =>
+      (mesHeures ?? []).map((co) => ({
+        id: co.id,
+        jour: co.jour,
+        heureDebut: co.heureDebut,
+        heureFin: co.heureFin,
+        semaine: co.semaine,
+        // couleur de la matière si renseignée, sinon celle de la classe
+        couleur: co.matiereCouleur ?? co.classeCouleur,
+        titre: co.classeNom,
+        salle: co.salle,
+        badge: libelleGroupeCompact(co.groupe, co.groupe1Nom, co.groupe2Nom),
+      })),
+    [mesHeures],
   );
 
   async function ajouterClasse() {
@@ -79,6 +102,27 @@ export default function EcranClasses() {
         <ThemedText type="small" style={{ color: c.textSecondary, marginBottom: Spacing.two }}>
           Année {annee?.libelle ?? '…'}
         </ThemedText>
+
+        {/* Mon emploi du temps : uniquement mes heures, même grille que les
+            EDT de classe. Masqué tant qu'aucune heure n'est marquée « mon cours ». */}
+        {blocsEdt.length > 0 && (
+          <View style={styles.edt}>
+            <ThemedText type="subtitle" style={{ marginBottom: Spacing.two }}>
+              Mon emploi du temps
+            </ThemedText>
+            <GrilleEdt
+              c={c}
+              blocs={blocsEdt}
+              jours={JOURS.slice()}
+              montrerEntete
+              defilant={false}
+              onTap={(id) => {
+                const co = mesHeures?.find((x) => x.id === id);
+                if (co) router.push({ pathname: '/classe/[id]', params: { id: String(co.classeId) } });
+              }}
+            />
+          </View>
+        )}
 
         {vide && (
           <ThemedText style={[styles.vide, { color: c.textSecondary }]}>
@@ -156,8 +200,9 @@ export default function EcranClasses() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  // flexGrow + justifyContent flex-end : peu de classes = collées en bas
-  scroll: { flexGrow: 1, justifyContent: 'flex-end', padding: Spacing.three, paddingBottom: 120 },
+  // contenu aligné en haut : l'EDT perso ouvre la page, les classes suivent
+  scroll: { flexGrow: 1, padding: Spacing.three, paddingBottom: 120 },
+  edt: { marginBottom: Spacing.four },
   vide: { textAlign: 'center', marginBottom: Spacing.four },
   grille: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
   caseGrille: { width: '47.5%', flexGrow: 1 },

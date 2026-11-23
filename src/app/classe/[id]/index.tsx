@@ -140,6 +140,11 @@ export default function EcranClasse() {
               router.push({ pathname: '/classe/[id]/ordre', params: { id: String(classeId) } }),
           },
           {
+            label: 'Demi-groupes',
+            onPress: () =>
+              router.push({ pathname: '/classe/[id]/groupes', params: { id: String(classeId) } }),
+          },
+          {
             label: 'Notes et évaluations',
             onPress: () =>
               router.push({ pathname: '/classe/[id]/evaluations', params: { id: String(classeId) } }),

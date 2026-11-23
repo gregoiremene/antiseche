@@ -2,18 +2,10 @@ import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  useColorScheme,
-  View,
-  type DimensionValue,
-} from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GrilleEdt, JOURS, type BlocEdt } from '@/components/grille-edt';
 import { ModaleCentree } from '@/components/modale-centree';
 import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
@@ -30,34 +22,18 @@ import {
   supprimerCours,
   type CoursEdt,
 } from '@/db/edt';
+import { libelleGroupeCompact } from '@/db/groupes';
 import { creerMatiere, selectMatieres } from '@/db/matieres';
-import { classes, SEMAINES_EDT, type SemaineEdt } from '@/db/schema';
+import { classes, GROUPES_EDT, SEMAINES_EDT, type GroupeEdt, type SemaineEdt } from '@/db/schema';
 import { aujourdhuiISO } from '@/lib/calendrier';
 import {
   autre,
   construireHeure,
   formatHeure,
-  heureEnMinutes,
   lundiDeLaSemaine,
   typeSemaine,
   type AncreSemaine,
 } from '@/lib/semaine-ab';
-
-const JOURS = [
-  { num: 1, court: 'Lun', long: 'Lundi' },
-  { num: 2, court: 'Mar', long: 'Mardi' },
-  { num: 3, court: 'Mer', long: 'Mercredi' },
-  { num: 4, court: 'Jeu', long: 'Jeudi' },
-  { num: 5, court: 'Ven', long: 'Vendredi' },
-  { num: 6, court: 'Sam', long: 'Samedi' },
-] as const;
-
-type Jour = (typeof JOURS)[number];
-
-const PX_PAR_MIN = 1; // 1 min = 1 px → une heure fait 60 px de haut
-const GUTTER = 34; // largeur de la colonne des heures
-const DEBUT_JOURNEE = 8 * 60; // la grille commence au plus tard à 8h
-const FIN_JOURNEE = 18 * 60; // la grille descend au moins jusqu'à 18h
 
 /** jour d'aujourd'hui ramené à 1–6 ; le dimanche retombe sur lundi */
 function jourParDefaut(): number {
@@ -73,17 +49,6 @@ function infosCours(co: CoursEdt): { nom: string; couleur: string | null } {
   };
 }
 
-/**
- * Position horizontale d'un cours dans sa colonne, selon sa semaine : les cours
- * de toutes les semaines prennent toute la largeur, ceux de A la moitié gauche,
- * ceux de B la moitié droite.
- */
-function positionHoriz(semaine: SemaineEdt): { left: DimensionValue; right: DimensionValue } {
-  if (semaine === 'A') return { left: 0, right: '50%' };
-  if (semaine === 'B') return { left: '50%', right: 0 };
-  return { left: 0, right: 0 };
-}
-
 type Params = { id: number; ancreLundi: string; ancreType: 'A' | 'B' };
 
 export default function EditeurEdt() {
@@ -96,6 +61,9 @@ export default function EditeurEdt() {
 
   const [params, setParams] = useState<Params | null>(null);
 
+  // filtre de vue de la grille : tout l'EDT, ou seulement un demi-groupe
+  const [vueGroupe, setVueGroupe] = useState<'tout' | 'g1' | 'g2'>('tout');
+
   // édition en cours : un cours existant, ou null quand on ajoute
   const [edition, setEdition] = useState<CoursEdt | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -106,6 +74,7 @@ export default function EditeurEdt() {
   const [hFin, setHFin] = useState('');
   const [mFin, setMFin] = useState('');
   const [semaine, setSemaine] = useState<SemaineEdt>('toutes');
+  const [groupe, setGroupe] = useState<GroupeEdt>('classe');
   const [estMonCours, setEstMonCours] = useState(false);
   const [matiereId, setMatiereId] = useState<number | null>(null);
   const [salle, setSalle] = useState('');
@@ -127,12 +96,46 @@ export default function EditeurEdt() {
   }, []);
 
   const { data: infosClasse } = useLiveQuery(
-    db.select({ nom: classes.nom }).from(classes).where(eq(classes.id, classeId)),
+    db
+      .select({ nom: classes.nom, groupe1Nom: classes.groupe1Nom, groupe2Nom: classes.groupe2Nom })
+      .from(classes)
+      .where(eq(classes.id, classeId)),
     [classeId],
   );
   const nomClasse = infosClasse?.[0]?.nom;
+  const g1Nom = infosClasse?.[0]?.groupe1Nom ?? 'Groupe 1';
+  const g2Nom = infosClasse?.[0]?.groupe2Nom ?? 'Groupe 2';
 
   const { data: cours } = useLiveQuery(selectEdtClasse(classeId), [classeId]);
+
+  // la grille n'affiche que les cours concernés par la vue : « Tout » = tout
+  // l'EDT ; un groupe = cours de toute la classe + ceux de ce groupe-là.
+  const coursAffiches = useMemo(() => {
+    const liste = cours ?? [];
+    if (vueGroupe === 'tout') return liste;
+    return liste.filter((co) => co.groupe === 'classe' || co.groupe === vueGroupe);
+  }, [cours, vueGroupe]);
+
+  // cours → blocs pour la grille partagée (titre = matière, badge = groupe)
+  const blocs: BlocEdt[] = useMemo(
+    () =>
+      coursAffiches.map((co) => {
+        const info = infosCours(co);
+        return {
+          id: co.id,
+          jour: co.jour,
+          heureDebut: co.heureDebut,
+          heureFin: co.heureFin,
+          semaine: co.semaine,
+          couleur: info.couleur,
+          titre: info.nom,
+          salle: co.salle,
+          badge: libelleGroupeCompact(co.groupe, g1Nom, g2Nom),
+          monCours: co.estMonCours,
+        };
+      }),
+    [coursAffiches, g1Nom, g2Nom],
+  );
   const { data: matieresListe } = useLiveQuery(selectMatieres());
 
   const ancre: AncreSemaine | null = params
@@ -155,6 +158,7 @@ export default function EditeurEdt() {
     setHFin('');
     setMFin('');
     setSemaine('toutes');
+    setGroupe('classe');
     setEstMonCours(false);
     setMatiereId(null);
     setSalle('');
@@ -172,6 +176,7 @@ export default function EditeurEdt() {
     setHFin(String(Number(h2)));
     setMFin(m2);
     setSemaine(co.semaine);
+    setGroupe(co.groupe);
     setEstMonCours(co.estMonCours);
     setMatiereId(co.matiereId);
     setSalle(co.salle ?? '');
@@ -194,6 +199,7 @@ export default function EditeurEdt() {
       heureDebut: debut,
       heureFin: fin,
       semaine,
+      groupe,
       estMonCours,
       matiereId,
       salle: salle.trim() || null,
@@ -274,16 +280,47 @@ export default function EditeurEdt() {
             <ThemedText style={{ color: c.accentText, fontWeight: '700' }}>+ Cours</ThemedText>
           </PressableScale>
         </View>
+
+        {/* Filtre de vue : tout l'EDT, ou seulement un demi-groupe */}
+        <View style={styles.pillsLigne}>
+          {([
+            { v: 'tout', label: 'Tout' },
+            { v: 'g1', label: g1Nom },
+            { v: 'g2', label: g2Nom },
+          ] as const).map((opt) => {
+            const actif = vueGroupe === opt.v;
+            return (
+              <Pressable
+                key={opt.v}
+                onPress={() => setVueGroupe(opt.v)}
+                style={[
+                  styles.choixPill,
+                  { borderColor: actif ? c.accent : c.border, backgroundColor: actif ? c.accent : 'transparent' },
+                ]}>
+                <ThemedText type="small" style={{ color: actif ? c.accentText : c.text, fontWeight: '700' }}>
+                  {opt.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <GrilleEdt
         c={c}
-        cours={cours ?? []}
+        blocs={blocs}
         jours={JOURS.slice()}
         montrerEntete
         insetBottom={insets.bottom}
-        onTap={ouvrirEdition}
-        onLong={confirmerSuppression}
+        vide={`Aucun cours.\nAjoute l’emploi du temps complet de la classe (toutes matières) pour que les créneaux de colle se calculent tout seuls.`}
+        onTap={(id) => {
+          const co = coursAffiches.find((x) => x.id === id);
+          if (co) ouvrirEdition(co);
+        }}
+        onLong={(id) => {
+          const co = coursAffiches.find((x) => x.id === id);
+          if (co) confirmerSuppression(co);
+        }}
       />
 
       <ModaleCentree visible={modalVisible} onClose={() => setModalVisible(false)}>
@@ -425,6 +462,27 @@ export default function EditeurEdt() {
           })}
         </View>
 
+        <ThemedText style={styles.champLabel}>Groupe</ThemedText>
+        <View style={styles.pillsLigne}>
+          {GROUPES_EDT.map((gr) => {
+            const actif = groupe === gr;
+            const label = gr === 'classe' ? 'Classe entière' : gr === 'g1' ? g1Nom : g2Nom;
+            return (
+              <Pressable
+                key={gr}
+                onPress={() => setGroupe(gr)}
+                style={[
+                  styles.choixPill,
+                  { borderColor: actif ? c.accent : c.border, backgroundColor: actif ? c.accent : 'transparent' },
+                ]}>
+                <ThemedText type="small" style={{ color: actif ? c.accentText : c.text, fontWeight: '700' }}>
+                  {label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <Pressable
           onPress={() => setEstMonCours((v) => !v)}
           style={[
@@ -455,151 +513,6 @@ export default function EditeurEdt() {
         </PressableScale>
       </ModaleCentree>
     </ThemedView>
-  );
-}
-
-/**
- * Grille temporelle façon carnet : une colonne par jour, chaque colonne coupée
- * en deux (A à gauche, B à droite). Les cours sont positionnés et dimensionnés
- * selon leur horaire réel (2 h = deux fois plus haut). Sert aux deux vues :
- * un seul jour (vue Jour) ou les six (vue Semaine).
- */
-function GrilleEdt({
-  c,
-  cours,
-  jours,
-  montrerEntete,
-  insetBottom,
-  onTap,
-  onLong,
-}: {
-  c: ThemeColors;
-  cours: CoursEdt[];
-  jours: Jour[];
-  montrerEntete: boolean;
-  insetBottom: number;
-  onTap: (co: CoursEdt) => void;
-  onLong: (co: CoursEdt) => void;
-}) {
-  const numsAffiches = useMemo(() => new Set<number>(jours.map((j) => j.num)), [jours]);
-  const coursVisibles = useMemo(
-    () => cours.filter((co) => numsAffiches.has(co.jour)),
-    [cours, numsAffiches],
-  );
-
-  const { debutMin, finMin, heures } = useMemo(() => {
-    if (coursVisibles.length === 0) return { debutMin: 0, finMin: 0, heures: [] as number[] };
-    let min = Infinity;
-    let max = -Infinity;
-    for (const co of coursVisibles) {
-      min = Math.min(min, heureEnMinutes(co.heureDebut));
-      max = Math.max(max, heureEnMinutes(co.heureFin));
-    }
-    // la journée s'affiche de 8h à 18h, élargie si un cours déborde
-    const debutMin = Math.min(Math.floor(min / 60) * 60, DEBUT_JOURNEE);
-    const finMin = Math.max(Math.ceil(max / 60) * 60, FIN_JOURNEE);
-    const heures: number[] = [];
-    for (let h = debutMin / 60; h <= finMin / 60; h++) heures.push(h);
-    return { debutMin, finMin, heures };
-  }, [coursVisibles]);
-
-  const hauteur = (finMin - debutMin) * PX_PAR_MIN;
-
-  if (coursVisibles.length === 0) {
-    return (
-      <View style={styles.corps}>
-        <ThemedText style={[styles.vide, { color: c.textSecondary }]}>
-          Aucun cours{jours.length === 1 ? ` le ${jours[0].long.toLowerCase()}` : ''}.{'\n'}
-          Ajoute l’emploi du temps complet de la classe (toutes matières) pour que
-          les créneaux de colle se calculent tout seuls.
-        </ThemedText>
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView style={styles.corps} contentContainerStyle={{ paddingBottom: Spacing.six + insetBottom }}>
-      {montrerEntete && (
-        <View style={styles.grilleEntete}>
-          <View style={{ width: GUTTER }} />
-          {jours.map((j) => (
-            <View key={j.num} style={[styles.grilleColEntete, { borderColor: c.border }]}>
-              <ThemedText type="small" style={{ fontWeight: '700' }}>
-                {j.court}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View style={[styles.grilleCorps, { height: hauteur }]}>
-        {/* colonne des heures */}
-        <View style={{ width: GUTTER }}>
-          {heures.map((h) => (
-            <ThemedText
-              key={h}
-              type="small"
-              style={[styles.heureAxe, { top: (h * 60 - debutMin) * PX_PAR_MIN - 7, color: c.textSecondary }]}>
-              {h}h
-            </ThemedText>
-          ))}
-        </View>
-
-        {/* une colonne par jour, coupée A | B */}
-        {jours.map((j) => {
-          const duJour = coursVisibles.filter((co) => co.jour === j.num);
-          return (
-            <View key={j.num} style={[styles.grilleCol, { borderColor: c.border }]}>
-              {/* filets horaires */}
-              {heures.map((h) => (
-                <View
-                  key={h}
-                  style={[styles.filetHeure, { top: (h * 60 - debutMin) * PX_PAR_MIN, backgroundColor: c.border }]}
-                />
-              ))}
-              {/* séparateur vertical A | B */}
-              <View style={[styles.filetAB, { backgroundColor: c.border }]} />
-
-              {/* blocs de cours */}
-              {duJour.map((co) => {
-                const info = infosCours(co);
-                const top = (heureEnMinutes(co.heureDebut) - debutMin) * PX_PAR_MIN;
-                const h = (heureEnMinutes(co.heureFin) - heureEnMinutes(co.heureDebut)) * PX_PAR_MIN;
-                const fond = info.couleur ?? c.backgroundSelected;
-                const texte = info.couleur ? texteSurCouleur(info.couleur) : c.text;
-                const specifique = co.semaine !== 'toutes';
-                return (
-                  <Pressable
-                    key={co.id}
-                    onPress={() => onTap(co)}
-                    onLongPress={() => onLong(co)}
-                    style={[
-                      styles.bloc,
-                      positionHoriz(co.semaine),
-                      { top, height: h, backgroundColor: fond, borderColor: c.background },
-                    ]}>
-                    {co.estMonCours && <View style={[styles.blocMoi, { backgroundColor: c.accent }]} />}
-                    <ThemedText
-                      numberOfLines={2}
-                      style={{ color: texte, fontSize: 10, fontWeight: '700', paddingRight: specifique ? 12 : 0 }}>
-                      {info.nom}
-                    </ThemedText>
-                    {h >= 40 && co.salle && (
-                      <ThemedText style={{ color: texte, fontSize: 9, opacity: 0.9 }}>{co.salle}</ThemedText>
-                    )}
-                    {specifique && (
-                      <View style={styles.blocAB}>
-                        <ThemedText style={styles.blocABTexte}>{co.semaine}</ThemedText>
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          );
-        })}
-      </View>
-    </ScrollView>
   );
 }
 
@@ -658,7 +571,6 @@ function ChampHeure({
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  corps: { flex: 1 },
   entete: { padding: Spacing.three, gap: Spacing.three },
   carteAb: {
     flexDirection: 'row',
@@ -683,36 +595,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.s,
     borderWidth: 1,
   },
-
-  vide: { textAlign: 'center', margin: Spacing.four, lineHeight: 20 },
-
-  // Grille (jour et semaine)
-  grilleEntete: { flexDirection: 'row' },
-  grilleColEntete: { flex: 1, alignItems: 'center', paddingVertical: Spacing.one, borderLeftWidth: StyleSheet.hairlineWidth },
-  grilleCorps: { flexDirection: 'row' },
-  grilleCol: { flex: 1, borderLeftWidth: StyleSheet.hairlineWidth, position: 'relative' },
-  heureAxe: { position: 'absolute', right: 4, textAlign: 'right' },
-  filetHeure: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth },
-  filetAB: { position: 'absolute', top: 0, bottom: 0, left: '50%', width: StyleSheet.hairlineWidth },
-  bloc: {
-    position: 'absolute',
-    borderRadius: 0,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 3,
-    paddingVertical: 2,
-    overflow: 'hidden',
-  },
-  blocMoi: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
-  blocAB: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    paddingHorizontal: 3,
-    paddingBottom: 1,
-    borderBottomLeftRadius: 4,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  blocABTexte: { color: '#fff', fontSize: 9, fontWeight: '800' },
 
   // Modale
   champLabel: { fontSize: 15, fontWeight: '700', marginTop: Spacing.one },

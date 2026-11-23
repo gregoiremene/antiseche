@@ -32,7 +32,7 @@ const FORMAT = 'antiseche-sauvegarde' as const;
  * refuse d'importer une sauvegarde d'une version plus récente que celle qu'on
  * sait relire ; on accepte les plus anciennes (les tables manquantes → vides).
  */
-export const VERSION_SAUVEGARDE = 2;
+export const VERSION_SAUVEGARDE = 3;
 
 /**
  * Tables dans l'ordre PARENT → ENFANT. C'est l'ordre d'insertion (une ligne

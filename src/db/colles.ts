@@ -79,6 +79,7 @@ export function selectCollesDetaillees() {
       prenom: eleves.prenom,
       nom: eleves.nom,
       mailsParents: eleves.mailsParents,
+      groupe: inscriptions.groupe,
       classeId: classes.id,
       classe: classes.nom,
       couleur: classes.couleur,

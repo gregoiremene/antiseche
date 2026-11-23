@@ -64,6 +64,13 @@
       "when": 1785165429240,
       "tag": "0008_dizzy_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795431002681,
+      "tag": "0009_quiet_groot",
+      "breakpoints": true
     }
   ]
 }

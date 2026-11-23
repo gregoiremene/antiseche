@@ -74,6 +74,7 @@ export function selectElevesOrdonnes(classeId: number) {
       amenagements: eleves.amenagements,
       photoUri: eleves.photoUri,
       ordre: inscriptions.ordre,
+      groupe: inscriptions.groupe,
     })
     .from(inscriptions)
     .innerJoin(eleves, eq(eleves.id, inscriptions.eleveId))

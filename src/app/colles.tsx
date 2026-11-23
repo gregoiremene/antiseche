@@ -90,6 +90,7 @@ export default function EcranColles() {
       setCreneaux(
         trouverCreneaux({
           classeXId: edition.classeId,
+          groupeEleve: edition.groupe === 2 ? 2 : 1,
           cours,
           ancre: { ancreLundi: params.ancreLundi, ancreType: params.ancreType },
           aujourdISO: jourJ,

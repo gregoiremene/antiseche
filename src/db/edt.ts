@@ -1,7 +1,7 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 
 import { db } from './index';
-import { classes, emploisDuTemps, matieres, parametresEdt, type SemaineEdt } from './schema';
+import { classes, emploisDuTemps, matieres, parametresEdt, type GroupeEdt, type SemaineEdt } from './schema';
 import { aujourdhuiISO } from '@/lib/calendrier';
 import type { CoursPourCreneau } from '@/lib/creneaux-colle';
 import { lundiDeLaSemaine, type TypeSemaine } from '@/lib/semaine-ab';
@@ -15,6 +15,7 @@ export type ChampsCours = {
   heureDebut: string;
   heureFin: string;
   semaine: SemaineEdt;
+  groupe: GroupeEdt;
   estMonCours: boolean;
   matiereId: number | null;
   salle: string | null;
@@ -30,6 +31,7 @@ export function selectEdtClasse(classeId: number) {
       heureDebut: emploisDuTemps.heureDebut,
       heureFin: emploisDuTemps.heureFin,
       semaine: emploisDuTemps.semaine,
+      groupe: emploisDuTemps.groupe,
       estMonCours: emploisDuTemps.estMonCours,
       matiereId: emploisDuTemps.matiereId,
       salle: emploisDuTemps.salle,
@@ -65,6 +67,36 @@ export async function majCours(id: number, champs: ChampsCours) {
 
 export async function supprimerCours(id: number) {
   await db.delete(emploisDuTemps).where(eq(emploisDuTemps.id, id));
+}
+
+/**
+ * Mon emploi du temps personnel : uniquement MES heures (`estMonCours`) sur
+ * toutes les classes de l'année, pour l'afficher sur l'accueil. Chaque cours
+ * porte le nom/couleur de sa classe (c'est l'info utile ici) et, en repli de
+ * couleur, celle de la matière.
+ */
+export function selectMonEdt(anneeId: number) {
+  return db
+    .select({
+      id: emploisDuTemps.id,
+      classeId: emploisDuTemps.classeId,
+      classeNom: classes.nom,
+      classeCouleur: classes.couleur,
+      jour: emploisDuTemps.jour,
+      heureDebut: emploisDuTemps.heureDebut,
+      heureFin: emploisDuTemps.heureFin,
+      semaine: emploisDuTemps.semaine,
+      groupe: emploisDuTemps.groupe,
+      salle: emploisDuTemps.salle,
+      matiereCouleur: matieres.couleur,
+      groupe1Nom: classes.groupe1Nom,
+      groupe2Nom: classes.groupe2Nom,
+    })
+    .from(emploisDuTemps)
+    .innerJoin(classes, eq(classes.id, emploisDuTemps.classeId))
+    .leftJoin(matieres, eq(matieres.id, emploisDuTemps.matiereId))
+    .where(and(eq(classes.anneeId, anneeId), eq(emploisDuTemps.estMonCours, true)))
+    .orderBy(asc(emploisDuTemps.jour), asc(emploisDuTemps.heureDebut));
 }
 
 /**
@@ -109,6 +141,7 @@ export async function coursPourCreneaux(classeXId: number): Promise<CoursPourCre
       heureDebut: emploisDuTemps.heureDebut,
       heureFin: emploisDuTemps.heureFin,
       semaine: emploisDuTemps.semaine,
+      groupe: emploisDuTemps.groupe,
       estMonCours: emploisDuTemps.estMonCours,
     })
     .from(emploisDuTemps)
