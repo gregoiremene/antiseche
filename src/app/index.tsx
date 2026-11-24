@@ -118,7 +118,11 @@ export default function EcranClasses() {
               defilant={false}
               onTap={(id) => {
                 const co = mesHeures?.find((x) => x.id === id);
-                if (co) router.push({ pathname: '/classe/[id]', params: { id: String(co.classeId) } });
+                if (co)
+                  router.push({
+                    pathname: '/classe/[id]/seance',
+                    params: { id: String(co.classeId), groupe: co.groupe },
+                  });
               }}
             />
           </View>

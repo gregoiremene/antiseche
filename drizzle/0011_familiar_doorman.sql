@@ -1,0 +1,1 @@
+ALTER TABLE `suivis` ADD `dernier_avertissement` integer DEFAULT false NOT NULL;

@@ -1,8 +1,29 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, between, count, eq, inArray } from 'drizzle-orm';
 
 import { aujourdhui } from '@/constants/observations';
 import { db } from './index';
-import { observations, type TypeObservation } from './schema';
+import { inscriptions, observations, type TypeObservation } from './schema';
+import { ouvrirSuivisExo } from './suivis';
+
+/**
+ * Compte, par élève et par type, les faits « collables » (exo non fait +
+ * matériel oublié) d'une classe sur une période (un trimestre). Sert au
+ * compteur de récurrence de la page séance (« 3ᵉ fois → colle »).
+ */
+export function selectCompteursCollables(classeId: number, debut: string, fin: string) {
+  return db
+    .select({ inscriptionId: observations.inscriptionId, type: observations.type, n: count() })
+    .from(observations)
+    .innerJoin(inscriptions, eq(inscriptions.id, observations.inscriptionId))
+    .where(
+      and(
+        eq(inscriptions.classeId, classeId),
+        between(observations.date, debut, fin),
+        inArray(observations.type, ['exo_non_fait', 'materiel_oublie']),
+      ),
+    )
+    .groupBy(observations.inscriptionId, observations.type);
+}
 
 /**
  * Enregistre une observation du même type pour plusieurs élèves d'un coup.
@@ -81,10 +102,19 @@ export async function enregistrerObservations(
   const aInserer = inscriptionIds.filter((id) => !existants.has(id));
   if (aInserer.length === 0) return { ajoutees: 0 };
 
-  await db
+  const inserees = await db
     .insert(observations)
     .values(aInserer.map((inscriptionId) => ({ inscriptionId, type, date })))
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: observations.id, inscriptionId: observations.inscriptionId });
 
-  return { ajoutees: aInserer.length };
+  // un « exo non fait » ouvre automatiquement un « à vérifier » (exo à rattraper)
+  // pour la séance suivante, en gardant le lien vers l'observation d'origine.
+  if (type === 'exo_non_fait') {
+    await ouvrirSuivisExo(
+      inserees.map((o) => ({ inscriptionId: o.inscriptionId, observationId: o.id })),
+    );
+  }
+
+  return { ajoutees: inserees.length };
 }

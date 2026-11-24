@@ -29,10 +29,16 @@ export function ModaleCentree({
   visible,
   onClose,
   children,
+  footer,
 }: {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /**
+   * Contenu épinglé EN BAS de la carte, hors du ScrollView : reste visible même
+   * quand le corps défile (p. ex. un bouton « Valider »). Optionnel.
+   */
+  footer?: React.ReactNode;
 }) {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const c = Colors[scheme];
@@ -59,6 +65,7 @@ export function ModaleCentree({
                 contentContainerStyle={styles.contenu}>
                 {children}
               </ScrollView>
+              {footer && <View style={[styles.pied, { borderColor: c.border }]}>{footer}</View>}
             </ThemedView>
           </View>
         </View>
@@ -89,4 +96,10 @@ const styles = StyleSheet.create({
   // que son contenu devienne défilable (sinon il garde sa hauteur de contenu).
   scroll: { flexShrink: 1 },
   contenu: { padding: Spacing.four, gap: Spacing.three },
+  pied: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
 });

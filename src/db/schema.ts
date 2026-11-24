@@ -40,6 +40,12 @@ export const classes = sqliteTable(
      */
     groupe1Nom: text('groupe1_nom').notNull().default('Groupe 1'),
     groupe2Nom: text('groupe2_nom').notNull().default('Groupe 2'),
+    /**
+     * Disposition du plan de classe : une entrée par colonne (de gauche à droite,
+     * vue du prof), avec sa largeur (nb de tables collées) et sa hauteur (nb de
+     * rangs). `null` = aucun plan créé. Les placements vivent dans `places`.
+     */
+    planColonnes: text('plan_colonnes', { mode: 'json' }).$type<{ largeur: number; hauteur: number }[]>(),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(current_timestamp)`),
@@ -96,6 +102,28 @@ export const inscriptions = sqliteTable(
   (t) => [unique().on(t.eleveId, t.classeId), index('idx_inscriptions_classe').on(t.classeId)],
 );
 
+/**
+ * Placement d'un élève sur le plan de classe. `slot` identifie une table dans la
+ * disposition (`classes.planColonnes`) au format "colonne:x:y" (x = position dans
+ * la largeur de la colonne, y = rang). Un élève occupe au plus une table
+ * (`inscriptionId` unique) et une table reçoit au plus un élève
+ * (`classeId` + `slot` unique). Les échanges permutent deux `slot`.
+ */
+export const places = sqliteTable(
+  'places',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    classeId: integer('classe_id')
+      .notNull()
+      .references(() => classes.id, { onDelete: 'cascade' }),
+    inscriptionId: integer('inscription_id')
+      .notNull()
+      .references(() => inscriptions.id, { onDelete: 'cascade' }),
+    slot: text('slot').notNull(),
+  },
+  (t) => [unique().on(t.inscriptionId), unique().on(t.classeId, t.slot)],
+);
+
 export const TYPES_OBSERVATION = [
   'exo_non_fait',
   'materiel_oublie',
@@ -124,6 +152,52 @@ export const observations = sqliteTable(
     // laissait passer des doublons sur deux taps rapprochés.
     unique().on(t.inscriptionId, t.type, t.date),
   ],
+);
+
+/**
+ * « À vérifier » : les boucles ouvertes que le prof doit clôturer à la séance
+ * suivante (rattrapage de cours, cahier au propre, exo à refaire, divers). À
+ * distinguer des observations, qui sont des FAITS datés et comptent au bilan ;
+ * un suivi, lui, a un cycle de vie `a_verifier` → `regle`. Un suivi `exo` peut
+ * naître d'une observation (`observationId`), mais clôturer le suivi ne touche
+ * jamais l'observation : le fait reste dans l'historique et les bilans.
+ *
+ * Les rattrapages de DS/interro ne sont PAS stockés ici : ils se déduisent des
+ * notes (`absent` sans valeur), cf. `src/db/evaluations.ts`.
+ */
+export const TYPES_SUIVI = ['exo', 'cahier', 'rattrapage_cours', 'autre'] as const;
+export type TypeSuivi = (typeof TYPES_SUIVI)[number];
+
+export const STATUTS_SUIVI = ['a_verifier', 'regle'] as const;
+export type StatutSuivi = (typeof STATUTS_SUIVI)[number];
+
+export const suivis = sqliteTable(
+  'suivis',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    inscriptionId: integer('inscription_id')
+      .notNull()
+      .references(() => inscriptions.id, { onDelete: 'cascade' }),
+    type: text('type').$type<TypeSuivi>().notNull(),
+    /** précision libre (« 54 p.23 », « cours du 12/11 ») ; null = aucune */
+    libelle: text('libelle'),
+    /** fait d'origine quand le suivi naît d'une observation ; null sinon */
+    observationId: integer('observation_id').references(() => observations.id, {
+      onDelete: 'set null',
+    }),
+    statut: text('statut').$type<StatutSuivi>().notNull().default('a_verifier'),
+    /**
+     * Cran d'escalade : « dernier avertissement » avant la colle. Le suivi reste
+     * ouvert (`a_verifier`) mais est signalé ⚠ et remonté en tête de sa catégorie.
+     */
+    dernierAvertissement: integer('dernier_avertissement', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    /** date d'ouverture `YYYY-MM-DD` (contexte « ça traîne depuis le… ») */
+    ouvertLe: text('ouvert_le').notNull(),
+    regleLe: text('regle_le'),
+  },
+  (t) => [index('idx_suivis_inscription').on(t.inscriptionId, t.statut)],
 );
 
 export const evaluations = sqliteTable(
@@ -158,6 +232,14 @@ export const notes = sqliteTable(
       .references(() => inscriptions.id, { onDelete: 'cascade' }),
     valeur: real('valeur'),
     absent: integer('absent', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Élève absent qui ne rattrapera pas (dispensé / incapacité). La note reste
+     * `absent` et hors moyenne, mais on cesse de rappeler le rattrapage sur la
+     * page séance. Réversible.
+     */
+    rattrapageAbandonne: integer('rattrapage_abandonne', { mode: 'boolean' })
+      .notNull()
+      .default(false),
   },
   (t) => [unique().on(t.evaluationId, t.inscriptionId)],
 );

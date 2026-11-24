@@ -15,6 +15,7 @@ import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { aujourdhui, infosObservation, OBSERVATIONS } from '@/constants/observations';
+import { infosSuivi, SUIVIS } from '@/constants/suivis';
 import { CardShadow, Colors, Radius, Spacing } from '@/constants/theme';
 import { useAnneeActive } from '@/hooks/use-annee-active';
 import { bornesTrimestre, formatDateCourte, trimestreDeDate } from '@/lib/trimestre';
@@ -25,8 +26,9 @@ import {
   basculerObservation,
   supprimerObservation,
 } from '@/db/observations';
+import { creerSuivi, reglerSuivi, selectSuivisEleve, supprimerSuivi } from '@/db/suivis';
 import { genererMotif } from '@/lib/colle-texte';
-import { classes, eleves, inscriptions, observations, type TypeObservation } from '@/db/schema';
+import { classes, eleves, inscriptions, observations, type TypeObservation, type TypeSuivi } from '@/db/schema';
 import {
   bornesMois,
   formatJourCourt,
@@ -63,6 +65,10 @@ export default function FicheEleve() {
   const [texteNote, setTexteNote] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [dossierOuvert, setDossierOuvert] = useState(false);
+  // ajout d'un « à vérifier » depuis la fiche
+  const [ajoutSuivi, setAjoutSuivi] = useState(false);
+  const [typeSuivi, setTypeSuivi] = useState<TypeSuivi>('rattrapage_cours');
+  const [libelleSuivi, setLibelleSuivi] = useState('');
 
   const { annee, bornes } = useAnneeActive();
   const { debut, fin } = bornesMois(mois);
@@ -95,6 +101,11 @@ export default function FicheEleve() {
     [eleveId],
   );
   const fiche = fiches?.[0];
+
+  const { data: suivisOuverts } = useLiveQuery(
+    selectSuivisEleve(fiche?.inscriptionId ?? -1),
+    [fiche?.inscriptionId],
+  );
 
   const { data: duMois } = useLiveQuery(
     db
@@ -527,14 +538,57 @@ export default function FicheEleve() {
           })
         )}
 
+        {/* À vérifier : boucles ouvertes (rattrapages, cahier, exo…) */}
         {fiche && (
-          <>
+          <View style={styles.suivisSection}>
+            <View style={styles.suivisEntete}>
+              <ThemedText style={styles.titreListe}>À vérifier</ThemedText>
+              <Pressable
+                onPress={() => setAjoutSuivi(true)}
+                hitSlop={8}
+                style={[styles.boutonPlus, { borderColor: c.border }]}>
+                <ThemedText style={{ color: c.accent, fontWeight: '800', fontSize: 16 }}>+</ThemedText>
+              </Pressable>
+            </View>
+            {(suivisOuverts?.length ?? 0) === 0 ? (
+              <ThemedText type="small" style={{ color: c.textSecondary }}>
+                Rien à vérifier.
+              </ThemedText>
+            ) : (
+              suivisOuverts?.map((s) => {
+                const info = infosSuivi(s.type);
+                return (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => reglerSuivi(s.id)}
+                    onLongPress={() =>
+                      Alert.alert('Supprimer ce suivi ?', info.label, [
+                        { text: 'Annuler', style: 'cancel' },
+                        { text: 'Supprimer', style: 'destructive', onPress: () => supprimerSuivi(s.id) },
+                      ])
+                    }
+                    style={[styles.suiviLigne, { backgroundColor: c.backgroundElement, borderColor: c.border }]}>
+                    <View style={[styles.pastilleSuivi, { backgroundColor: info.couleur }]}>
+                      <ThemedText style={{ fontSize: 13 }}>{info.emoji}</ThemedText>
+                    </View>
+                    <ThemedText style={{ flex: 1, fontWeight: '600' }} numberOfLines={2}>
+                      {s.dernierAvertissement ? '⚠ ' : ''}
+                      {s.libelle ? `${info.label} — ${s.libelle}` : info.label}
+                    </ThemedText>
+                    <ThemedText type="small" style={{ color: c.textSecondary }}>
+                      ✓ réglé
+                    </ThemedText>
+                  </Pressable>
+                );
+              })
+            )}
+
             <PressableScale
               onPress={collerRapide}
               style={[styles.boutonColler, { borderColor: c.border, backgroundColor: c.backgroundElement }]}>
               <ThemedText style={{ fontWeight: '700' }}>🔒 Coller {fiche.prenom}</ThemedText>
             </PressableScale>
-          </>
+          </View>
         )}
 
         {fiche && <BlocCollesEleve inscriptionId={fiche.inscriptionId} />}
@@ -586,6 +640,47 @@ export default function FicheEleve() {
           </>
         )}
       </ModaleCentree>
+
+      {/* Ajout d'un « à vérifier » depuis la fiche */}
+      <ModaleCentree visible={ajoutSuivi} onClose={() => setAjoutSuivi(false)}>
+        <ThemedText type="subtitle">À vérifier</ThemedText>
+        <View style={styles.typesSuivi}>
+          {SUIVIS.map((s) => {
+            const actif = typeSuivi === s.type;
+            return (
+              <Pressable
+                key={s.type}
+                onPress={() => setTypeSuivi(s.type)}
+                style={[
+                  styles.typeSuiviPill,
+                  { borderColor: actif ? s.couleur : c.border, backgroundColor: actif ? s.couleur : 'transparent' },
+                ]}>
+                <ThemedText type="small" style={{ color: actif ? '#fff' : c.text, fontWeight: '700' }}>
+                  {s.emoji} {s.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
+        <TextInput
+          value={libelleSuivi}
+          onChangeText={setLibelleSuivi}
+          placeholder="Précision (optionnel)"
+          placeholderTextColor={c.textSecondary}
+          style={[styles.champ, { color: c.text, borderColor: c.border }]}
+        />
+        <PressableScale
+          onPress={async () => {
+            if (!fiche) return;
+            await creerSuivi({ inscriptionId: fiche.inscriptionId, type: typeSuivi, libelle: libelleSuivi });
+            setAjoutSuivi(false);
+            setLibelleSuivi('');
+            setTypeSuivi('rattrapage_cours');
+          }}
+          style={[styles.bouton, { backgroundColor: c.accent }]}>
+          <ThemedText style={[styles.ligneTitre, { color: c.accentText }]}>Ajouter</ThemedText>
+        </PressableScale>
+      </ModaleCentree>
     </ThemedView>
   );
 }
@@ -593,6 +688,27 @@ export default function FicheEleve() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   contenu: { padding: Spacing.three, gap: Spacing.three },
+  suivisSection: { gap: Spacing.two },
+  suivisEntete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  boutonPlus: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suiviLigne: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.two,
+    borderRadius: Radius.s,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  pastilleSuivi: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  typesSuivi: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  typeSuiviPill: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Radius.pill, borderWidth: 1 },
   bloc: {
     borderRadius: Radius.m,
     padding: Spacing.three,

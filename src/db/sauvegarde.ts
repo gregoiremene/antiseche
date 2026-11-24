@@ -13,6 +13,8 @@ import {
   notes,
   observations,
   parametresEdt,
+  places,
+  suivis,
 } from './schema';
 import { ecrirePhotoBase64, lirePhotoBase64, viderPhotosEleves } from '@/lib/photos';
 
@@ -32,7 +34,7 @@ const FORMAT = 'antiseche-sauvegarde' as const;
  * refuse d'importer une sauvegarde d'une version plus récente que celle qu'on
  * sait relire ; on accepte les plus anciennes (les tables manquantes → vides).
  */
-export const VERSION_SAUVEGARDE = 3;
+export const VERSION_SAUVEGARDE = 5;
 
 /**
  * Tables dans l'ordre PARENT → ENFANT. C'est l'ordre d'insertion (une ligne
@@ -45,7 +47,9 @@ const TABLES = {
   eleves,
   classes,
   inscriptions,
+  places,
   observations,
+  suivis,
   evaluations,
   notes,
   colles,
@@ -65,7 +69,9 @@ export type Sauvegarde = {
     eleves: InferSelectModel<typeof eleves>[];
     classes: InferSelectModel<typeof classes>[];
     inscriptions: InferSelectModel<typeof inscriptions>[];
+    places: InferSelectModel<typeof places>[];
     observations: InferSelectModel<typeof observations>[];
+    suivis: InferSelectModel<typeof suivis>[];
     evaluations: InferSelectModel<typeof evaluations>[];
     notes: InferSelectModel<typeof notes>[];
     colles: InferSelectModel<typeof colles>[];

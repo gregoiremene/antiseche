@@ -74,6 +74,8 @@ export default function RootLayout() {
             <Stack.Screen name="index" options={{ title: 'Mes classes' }} />
             <Stack.Screen name="classe/[id]/index" options={{ title: 'Classe' }} />
             <Stack.Screen name="classe/[id]/saisie" options={{ title: 'Saisie' }} />
+            <Stack.Screen name="classe/[id]/seance" options={{ title: 'Séance' }} />
+            <Stack.Screen name="classe/[id]/plan" options={{ title: 'Plan de classe' }} />
             <Stack.Screen name="classe/[id]/evaluations" options={{ title: 'Notes' }} />
             <Stack.Screen name="classe/[id]/ordre" options={{ title: 'Ordre des élèves' }} />
             <Stack.Screen name="classe/[id]/groupes" options={{ title: 'Demi-groupes' }} />

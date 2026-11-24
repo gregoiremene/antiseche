@@ -71,6 +71,27 @@
       "when": 1795431002681,
       "tag": "0009_quiet_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795511355377,
+      "tag": "0010_dashing_drax",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1795514197699,
+      "tag": "0011_familiar_doorman",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795534952846,
+      "tag": "0012_handy_hydra",
+      "breakpoints": true
     }
   ]
 }
