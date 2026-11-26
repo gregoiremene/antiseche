@@ -193,13 +193,13 @@ export function AjoutRapideEleve({
                     borderColor: choisi ? couleurActive : c.border,
                   },
                 ]}>
-                <ThemedText
+                {/* <ThemedText
                   style={{ color: choisi ? '#fff' : c.text, fontWeight: '700' }}
                   numberOfLines={1}>
                   {e.prenom}
-                </ThemedText>
+                </ThemedText> */}
                 <ThemedText
-                  style={{ fontSize: 10, color: choisi ? '#fff' : c.textSecondary }}
+                  style={{ fontSize: 14, color: choisi ? '#fff' : c.textSecondary, fontWeight: '800' }}
                   numberOfLines={1}>
                   {e.nom.toLocaleUpperCase('fr-FR')}
                 </ThemedText>

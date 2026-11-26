@@ -121,10 +121,10 @@ export default function EcranPlan() {
                       ]}>
                       {occ ? (
                         <>
-                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 14, fontWeight: '800' }}>
+                          {/* <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 16, fontWeight: '800' }}>
                             {occ.prenom}
-                          </ThemedText>
-                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 11 }}>
+                          </ThemedText> */}
+                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 14, fontWeight: '800' }}>
                             {occ.nom.toLocaleUpperCase('fr-FR')}
                           </ThemedText>
                         </>
@@ -191,14 +191,14 @@ export default function EcranPlan() {
                     borderColor: estLui ? c.accent : c.border,
                   },
                 ]}>
-                <ThemedText style={{ color: c.text, fontWeight: '700' }} numberOfLines={1}>
+                <ThemedText style={{ color: c.text, fontWeight: '700', fontSize: 20 }} numberOfLines={1}>
                   {e.prenom}
                 </ThemedText>
-                <ThemedText style={{ fontSize: 10, color: c.textSecondary }} numberOfLines={1}>
+                <ThemedText style={{ fontSize: 20, color: c.textSecondary }} numberOfLines={1}>
                   {e.nom.toLocaleUpperCase('fr-FR')}
                 </ThemedText>
                 {(estLui || dejaPlace) && (
-                  <ThemedText style={{ fontSize: 9, fontWeight: '700', color: estLui ? c.accent : c.textSecondary }}>
+                  <ThemedText style={{ fontSize: 14, fontWeight: '700', color: estLui ? 'red' : 'red' }}>
                     {estLui ? 'ici' : 'placé'}
                   </ThemedText>
                 )}

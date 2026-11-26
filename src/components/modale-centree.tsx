@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.three,
   },
-  stop: { width: '100%', maxWidth: 480, alignSelf: 'center', maxHeight: '100%' },
+  stop: { width: '100%', maxWidth: 480, alignSelf: 'center', maxHeight: '80%' },
   carte: {
     borderRadius: Radius.l,
     borderWidth: StyleSheet.hairlineWidth,
