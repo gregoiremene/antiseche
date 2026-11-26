@@ -8,7 +8,11 @@
  * y = rang (0 = devant, près du tableau).
  */
 
-export type Colonne = { largeur: number; hauteur: number };
+/** `espacement` = écart vertical (px) entre les rangs ; optionnel (défaut ci-dessous). */
+export type Colonne = { largeur: number; hauteur: number; espacement?: number };
+
+/** Espacement par défaut entre les rangs, si non réglé. */
+export const DEFAUT_ESPACEMENT = 8;
 
 export function slotId(colonne: number, x: number, y: number): string {
   return `${colonne}:${x}:${y}`;

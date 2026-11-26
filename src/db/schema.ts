@@ -45,7 +45,9 @@ export const classes = sqliteTable(
      * vue du prof), avec sa largeur (nb de tables collées) et sa hauteur (nb de
      * rangs). `null` = aucun plan créé. Les placements vivent dans `places`.
      */
-    planColonnes: text('plan_colonnes', { mode: 'json' }).$type<{ largeur: number; hauteur: number }[]>(),
+    planColonnes: text('plan_colonnes', { mode: 'json' }).$type<
+      { largeur: number; hauteur: number; espacement?: number }[]
+    >(),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(current_timestamp)`),

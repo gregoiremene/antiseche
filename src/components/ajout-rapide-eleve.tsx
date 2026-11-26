@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
 
 import { ModaleCentree } from '@/components/modale-centree';
@@ -52,19 +52,11 @@ export function AjoutRapideEleve({
   const [action, setAction] = useState<Action | null>(null);
   const [libelle, setLibelle] = useState('');
   const [selection, setSelection] = useState<Set<number>>(new Set());
-  const [recherche, setRecherche] = useState('');
-
-  const filtres = useMemo(() => {
-    const q = recherche.trim().toLocaleLowerCase('fr-FR');
-    if (!q) return eleves;
-    return eleves.filter((e) => `${e.prenom} ${e.nom}`.toLocaleLowerCase('fr-FR').includes(q));
-  }, [eleves, recherche]);
 
   function reset() {
     setAction(null);
     setLibelle('');
     setSelection(new Set());
-    setRecherche('');
   }
   function fermer() {
     reset();
@@ -181,41 +173,41 @@ export function AjoutRapideEleve({
         </>
       )}
 
-      <TextInput
-        value={recherche}
-        onChangeText={setRecherche}
-        placeholder="Chercher un élève…"
-        placeholderTextColor={c.textSecondary}
-        style={[styles.champ, { color: c.text, borderColor: c.border }]}
-      />
-
-      <View style={{ gap: Spacing.one }}>
-        {filtres.length === 0 ? (
-          <ThemedText type="small" style={{ color: c.textSecondary }}>
-            Aucun élève.
-          </ThemedText>
-        ) : (
-          filtres.map((e) => {
+      <ThemedText style={styles.groupeLabel}>Élèves</ThemedText>
+      {eleves.length === 0 ? (
+        <ThemedText type="small" style={{ color: c.textSecondary }}>
+          Aucun élève.
+        </ThemedText>
+      ) : (
+        <View style={styles.grille}>
+          {eleves.map((e) => {
             const choisi = selection.has(e.inscriptionId);
             return (
               <Pressable
                 key={e.inscriptionId}
                 onPress={() => basculer(e.inscriptionId)}
                 style={[
-                  styles.eleve,
-                  { backgroundColor: choisi ? couleurActive : c.backgroundElement, borderColor: c.border },
+                  styles.tuile,
+                  {
+                    backgroundColor: choisi ? couleurActive : c.backgroundElement,
+                    borderColor: choisi ? couleurActive : c.border,
+                  },
                 ]}>
-                <View style={[styles.case, { borderColor: choisi ? '#fff' : c.textSecondary }]}>
-                  {choisi && <ThemedText style={styles.coche}>✓</ThemedText>}
-                </View>
-                <ThemedText style={{ color: choisi ? '#fff' : c.text, fontWeight: '600' }} numberOfLines={1}>
-                  {e.nom.toLocaleUpperCase('fr-FR')} {e.prenom}
+                <ThemedText
+                  style={{ color: choisi ? '#fff' : c.text, fontWeight: '700' }}
+                  numberOfLines={1}>
+                  {e.prenom}
+                </ThemedText>
+                <ThemedText
+                  style={{ fontSize: 10, color: choisi ? '#fff' : c.textSecondary }}
+                  numberOfLines={1}>
+                  {e.nom.toLocaleUpperCase('fr-FR')}
                 </ThemedText>
               </Pressable>
             );
-          })
-        )}
-      </View>
+          })}
+        </View>
+      )}
     </ModaleCentree>
   );
 }
@@ -225,23 +217,19 @@ const styles = StyleSheet.create({
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   pill: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Radius.pill, borderWidth: 1 },
   champ: { borderWidth: 1, borderRadius: Radius.s, padding: Spacing.three, fontSize: 16 },
-  eleve: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    height: 48,
+  grille: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  tuile: {
+    flexGrow: 1,
+    flexBasis: 90,
+    minWidth: 90,
+    maxWidth: '48%',
+    minHeight: 46,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
     borderRadius: Radius.s,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  case: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  coche: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 16 },
   valider: { padding: Spacing.three, borderRadius: Radius.s, alignItems: 'center', marginTop: Spacing.one },
 });

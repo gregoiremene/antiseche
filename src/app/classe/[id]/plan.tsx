@@ -1,30 +1,32 @@
 import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, useColorScheme, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ModaleCentree } from '@/components/modale-centree';
 import { PressableScale } from '@/components/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { texteSurCouleur } from '@/constants/couleurs';
-import { Colors, Radius, Spacing, type ThemeColors } from '@/constants/theme';
+import { CardShadow, Colors, Radius, Spacing, type ThemeColors } from '@/constants/theme';
 import { db } from '@/db';
 import { selectElevesOrdonnes } from '@/db/eleves';
 import { definirDisposition, placerEleve, retirerEleve, selectPlaces } from '@/db/plan';
 import { classes } from '@/db/schema';
-import { type Colonne, nbTables, slotId } from '@/lib/plan-classe';
+import { type Colonne, DEFAUT_ESPACEMENT, nbTables, slotId } from '@/lib/plan-classe';
 
-const TABLE_W = 58;
-const TABLE_H = 42;
+const TABLE_W = 82;
+const TABLE_H = 50;
 
 export default function EcranPlan() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const classeId = Number(id);
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const c = Colors[scheme];
+  const insets = useSafeAreaInsets();
 
   // cet écran se vit en paysage ; on remet le portrait en sortant
   useEffect(() => {
@@ -53,7 +55,6 @@ export default function EcranPlan() {
   const placees = useMemo(() => new Set((placesData ?? []).map((p) => p.inscriptionId)), [placesData]);
 
   const [slotActif, setSlotActif] = useState<string | null>(null);
-  const [recherche, setRecherche] = useState('');
   const [configVisible, setConfigVisible] = useState(false);
 
   const total = eleves?.length ?? 0;
@@ -63,7 +64,6 @@ export default function EcranPlan() {
     if (!slotActif) return;
     await placerEleve(classeId, inscriptionId, slotActif);
     setSlotActif(null);
-    setRecherche('');
   }
   async function viderTable() {
     const occ = slotActif ? parSlot.get(slotActif) : undefined;
@@ -75,46 +75,30 @@ export default function EcranPlan() {
   if (!colonnes) {
     return (
       <ThemedView style={styles.page}>
-        <Stack.Screen options={{ title: classe?.nom ? `Plan · ${classe.nom}` : 'Plan de classe' }} />
+        <Stack.Screen options={{ headerShown: false }} />
+        <BoutonRetour c={c} top={insets.top} left={insets.left} />
         <CreationPlan c={c} onCreer={(cols) => definirDisposition(classeId, cols)} />
       </ThemedView>
     );
   }
 
   const occupantActif = slotActif ? parSlot.get(slotActif) : undefined;
-  const filtres = (eleves ?? []).filter((e) => {
-    const q = recherche.trim().toLocaleLowerCase('fr-FR');
-    return !q || `${e.prenom} ${e.nom}`.toLocaleLowerCase('fr-FR').includes(q);
-  });
-  // non placés d'abord, puis placés (pour échanger)
-  const tries = [...filtres].sort((a, b) => Number(placees.has(a.inscriptionId)) - Number(placees.has(b.inscriptionId)));
 
   return (
     <ThemedView style={styles.page}>
-      <Stack.Screen
-        options={{
-          title: classe?.nom ? `Plan · ${classe.nom}` : 'Plan de classe',
-          headerRight: () => (
-            <Pressable onPress={() => setConfigVisible(true)} hitSlop={8}>
-              <ThemedText style={{ color: c.accent, fontWeight: '700' }}>Disposition</ThemedText>
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.barre}>
-        <ThemedText type="small" style={{ color: nbPlaces < total ? c.textSecondary : c.text, fontWeight: '700' }}>
-          {nbPlaces} / {total} élèves placés
-        </ThemedText>
-      </View>
-
-      {/* grille : colonnes centrées, tables collées dans une colonne, tableau en bas */}
+      {/* grille : colonnes centrées, tables collées dans une colonne */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.grille}>
+        style={styles.grilleScroll}
+        contentContainerStyle={[
+          styles.grille,
+          { paddingTop: insets.top + 44, paddingLeft: Spacing.four + insets.left, paddingRight: Spacing.four + insets.right },
+        ]}>
         {colonnes.map((col, ci) => (
-          <View key={ci} style={styles.colonne}>
+          <View key={ci} style={{ gap: col.espacement ?? DEFAUT_ESPACEMENT }}>
             {/* du fond (hauteur-1, en haut) vers le devant (0, en bas, près du tableau) */}
             {Array.from({ length: col.hauteur }, (_, k) => col.hauteur - 1 - k).map((y) => (
               <View key={y} style={styles.rang}>
@@ -137,15 +121,15 @@ export default function EcranPlan() {
                       ]}>
                       {occ ? (
                         <>
-                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 11, fontWeight: '800' }}>
+                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 14, fontWeight: '800' }}>
                             {occ.prenom}
                           </ThemedText>
-                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 9 }}>
+                          <ThemedText numberOfLines={1} style={{ color: txt, fontSize: 11 }}>
                             {occ.nom.toLocaleUpperCase('fr-FR')}
                           </ThemedText>
                         </>
                       ) : (
-                        <ThemedText style={{ color: c.textSecondary, fontSize: 16 }}>+</ThemedText>
+                        <ThemedText style={{ color: c.textSecondary, fontSize: 22 }}>+</ThemedText>
                       )}
                     </Pressable>
                   );
@@ -156,18 +140,31 @@ export default function EcranPlan() {
         ))}
       </ScrollView>
 
-      {/* le tableau, en bas (vue du prof face aux élèves) */}
-      <View style={[styles.tableau, { borderColor: c.border, backgroundColor: c.backgroundElement }]}>
-        <ThemedText style={{ color: c.textSecondary, fontWeight: '800', letterSpacing: 2 }}>TABLEAU</ThemedText>
-      </View>
+      {/* contrôles flottants : retour (haut gauche) + disposition (haut droite) */}
+      <BoutonRetour c={c} top={insets.top} left={insets.left} />
+      <PressableScale
+        onPress={() => setConfigVisible(true)}
+        style={[
+          styles.dispoFlottant,
+          { backgroundColor: c.backgroundElement, borderColor: c.border, top: insets.top + Spacing.one, right: Spacing.three + insets.right },
+        ]}>
+        <ThemedText style={{ color: c.accent, fontWeight: '700' }}>Disposition</ThemedText>
+      </PressableScale>
+
+      {/* compteur discret en bas à gauche */}
+      <ThemedText
+        type="small"
+        style={[
+          styles.compteur,
+          { color: nbPlaces < total ? c.textSecondary : c.text, bottom: Spacing.two + insets.bottom, left: Spacing.three + insets.left },
+        ]}>
+        {nbPlaces} / {total} placés
+      </ThemedText>
 
       {/* modale d'assignation d'une table */}
       <ModaleCentree
         visible={slotActif !== null}
-        onClose={() => {
-          setSlotActif(null);
-          setRecherche('');
-        }}
+        onClose={() => setSlotActif(null)}
         footer={
           occupantActif ? (
             <PressableScale onPress={viderTable} style={[styles.retirer, { borderColor: c.border }]}>
@@ -176,30 +173,39 @@ export default function EcranPlan() {
           ) : undefined
         }>
         <ThemedText type="subtitle">{occupantActif ? 'Changer d’élève' : 'Placer un élève'}</ThemedText>
-        <TextInput
-          value={recherche}
-          onChangeText={setRecherche}
-          placeholder="Chercher un élève…"
-          placeholderTextColor={c.textSecondary}
-          style={[styles.champ, { color: c.text, borderColor: c.border }]}
-        />
-        {tries.map((e) => {
-          const dejaPlace = placees.has(e.inscriptionId);
-          const estLui = occupantActif?.inscriptionId === e.inscriptionId;
-          return (
-            <Pressable
-              key={e.inscriptionId}
-              onPress={() => choisir(e.inscriptionId)}
-              style={[styles.eleveLigne, { borderColor: c.border, backgroundColor: estLui ? c.backgroundSelected : 'transparent' }]}>
-              <ThemedText style={{ color: c.text, fontWeight: '600' }} numberOfLines={1}>
-                {e.nom.toLocaleUpperCase('fr-FR')} {e.prenom}
-              </ThemedText>
-              <ThemedText type="small" style={{ color: c.textSecondary }}>
-                {estLui ? 'ici' : dejaPlace ? 'placé — échanger' : 'à placer'}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
+        <ThemedText type="small" style={{ color: c.textSecondary }}>
+          Déjà placé → échange les deux tables.
+        </ThemedText>
+        <View style={styles.grilleEleves}>
+          {(eleves ?? []).map((e) => {
+            const dejaPlace = placees.has(e.inscriptionId);
+            const estLui = occupantActif?.inscriptionId === e.inscriptionId;
+            return (
+              <Pressable
+                key={e.inscriptionId}
+                onPress={() => choisir(e.inscriptionId)}
+                style={[
+                  styles.tuile,
+                  {
+                    backgroundColor: estLui ? c.backgroundSelected : dejaPlace ? c.backgroundElement : 'transparent',
+                    borderColor: estLui ? c.accent : c.border,
+                  },
+                ]}>
+                <ThemedText style={{ color: c.text, fontWeight: '700' }} numberOfLines={1}>
+                  {e.prenom}
+                </ThemedText>
+                <ThemedText style={{ fontSize: 10, color: c.textSecondary }} numberOfLines={1}>
+                  {e.nom.toLocaleUpperCase('fr-FR')}
+                </ThemedText>
+                {(estLui || dejaPlace) && (
+                  <ThemedText style={{ fontSize: 9, fontWeight: '700', color: estLui ? c.accent : c.textSecondary }}>
+                    {estLui ? 'ici' : 'placé'}
+                  </ThemedText>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
       </ModaleCentree>
 
       {/* modale de disposition */}
@@ -214,6 +220,20 @@ export default function EcranPlan() {
         }}
       />
     </ThemedView>
+  );
+}
+
+/** Flèche de retour flottante (header masqué pour gagner de la place). */
+function BoutonRetour({ c, top, left }: { c: ThemeColors; top: number; left: number }) {
+  return (
+    <PressableScale
+      onPress={() => router.back()}
+      style={[
+        styles.retour,
+        { backgroundColor: c.backgroundElement, borderColor: c.border, top: top + Spacing.one, left: Spacing.three + left },
+      ]}>
+      <ThemedText style={{ color: c.text, fontSize: 22, fontWeight: '700', marginTop: -2 }}>‹</ThemedText>
+    </PressableScale>
   );
 }
 
@@ -257,7 +277,7 @@ function ConfigDisposition({
     if (visible) setCols(colonnes);
   }, [visible, colonnes]);
 
-  function maj(i: number, champ: keyof Colonne, delta: number) {
+  function maj(i: number, champ: 'largeur' | 'hauteur', delta: number) {
     setCols((prec) =>
       prec.map((col, k) => (k === i ? { ...col, [champ]: Math.max(1, col[champ] + delta) } : col)),
     );
@@ -278,6 +298,15 @@ function ConfigDisposition({
       <ThemedText type="small" style={{ color: c.textSecondary }}>
         Réduire une colonne libère les tables en trop.
       </ThemedText>
+      <Stepper
+        c={c}
+        label="Espacement des rangs"
+        valeur={cols[0]?.espacement ?? DEFAUT_ESPACEMENT}
+        min={0}
+        max={40}
+        pas={2}
+        onChange={(v) => setCols((p) => p.map((col) => ({ ...col, espacement: v })))}
+      />
       {cols.map((col, i) => (
         <View key={i} style={[styles.colConfig, { borderColor: c.border }]}>
           <ThemedText style={{ fontWeight: '700', width: 72 }}>Colonne {i + 1}</ThemedText>
@@ -306,6 +335,7 @@ function Stepper({
   max,
   onChange,
   compact = false,
+  pas = 1,
 }: {
   c: ThemeColors;
   label: string;
@@ -314,19 +344,20 @@ function Stepper({
   max: number;
   onChange: (v: number) => void;
   compact?: boolean;
+  pas?: number;
 }) {
   return (
     <View style={[styles.stepper, compact && { flex: 0 }]}>
       {!compact && <ThemedText style={{ flex: 1, fontWeight: '600' }}>{label}</ThemedText>}
       {compact && <ThemedText type="small" style={{ color: c.textSecondary }}>{label}</ThemedText>}
       <Pressable
-        onPress={() => onChange(Math.max(min, valeur - 1))}
+        onPress={() => onChange(Math.max(min, valeur - pas))}
         style={[styles.pasBouton, { borderColor: c.border }]}>
         <ThemedText style={{ fontSize: 18, fontWeight: '700', color: c.text }}>−</ThemedText>
       </Pressable>
       <ThemedText style={{ minWidth: 22, textAlign: 'center', fontWeight: '800' }}>{valeur}</ThemedText>
       <Pressable
-        onPress={() => onChange(Math.min(max, valeur + 1))}
+        onPress={() => onChange(Math.min(max, valeur + pas))}
         style={[styles.pasBouton, { borderColor: c.border }]}>
         <ThemedText style={{ fontSize: 18, fontWeight: '700', color: c.text }}>+</ThemedText>
       </Pressable>
@@ -336,50 +367,71 @@ function Stepper({
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  barre: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.one, alignItems: 'center' },
+  grilleScroll: { flex: 1 },
   grille: {
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'flex-end',
     gap: Spacing.five,
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
   },
-  colonne: { gap: Spacing.two },
+  compteur: { position: 'absolute', left: Spacing.three, fontWeight: '700' },
+  retour: {
+    position: 'absolute',
+    left: Spacing.three,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    ...CardShadow,
+  },
+  dispoFlottant: {
+    position: 'absolute',
+    right: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    height: 38,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    ...CardShadow,
+  },
   rang: { flexDirection: 'row' },
   table: {
     width: TABLE_W,
     height: TABLE_H,
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  tableau: {
-    margin: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.s,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
+    paddingHorizontal: 4,
   },
   // création / config
-  creation: { padding: Spacing.four, gap: Spacing.three },
+  creation: { padding: Spacing.four, paddingTop: 56, gap: Spacing.three },
   boutonPlein: { padding: Spacing.three, borderRadius: Radius.s, alignItems: 'center' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   pasBouton: { width: 34, height: 34, borderRadius: Radius.s, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   colConfig: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth },
   ajoutCol: { padding: Spacing.three, borderRadius: Radius.s, borderWidth: 1, alignItems: 'center', marginTop: Spacing.one },
   // modale placement
-  champ: { borderWidth: 1, borderRadius: Radius.s, padding: Spacing.three, fontSize: 16 },
-  eleveLigne: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
+  grilleEleves: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.one },
+  tuile: {
+    flexGrow: 1,
+    flexBasis: 90,
+    minWidth: 90,
+    maxWidth: '48%',
+    minHeight: 46,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
     borderRadius: Radius.s,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   retirer: { padding: Spacing.three, borderRadius: Radius.s, borderWidth: 1, alignItems: 'center' },
 });
